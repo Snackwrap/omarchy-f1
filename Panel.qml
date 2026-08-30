@@ -36,6 +36,11 @@ Panel {
   property bool driversLoaded: false
   property bool constructorsLoaded: false
 
+  // Starting grid for the upcoming race (qualifying classification), shown once
+  // qualifying is done and before the race starts — mirrors the TRMNL swap.
+  property var gridRows: []
+  property bool gridLoaded: false
+
   readonly property string base: "https://api.jolpi.ca/ergast/f1/"
 
   function openFromHotkey() { open() }
@@ -120,12 +125,69 @@ Panel {
     }
   }
 
+  Process {
+    id: gridProc
+    command: ["curl", "-fsS", "-A", "omarchy-f1/0.3", "--max-time", "10",
+              root.base + "current/" + (root.race ? root.race.round : "") + "/qualifying.json"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          var races = JSON.parse(String(text || "")).MRData.RaceTable.Races
+          var arr = (races && races.length) ? races[0].QualifyingResults : []
+          var out = []
+          for (var i = 0; i < arr.length; i++) {
+            var q = arr[i]
+            out.push({
+              pos: q.position,
+              code: (q.Driver && q.Driver.code) ? q.Driver.code : (q.Driver ? q.Driver.familyName.substring(0, 3).toUpperCase() : "?"),
+              team: q.Constructor ? q.Constructor.name : "",
+              time: q.Q3 || q.Q2 || q.Q1 || ""
+            })
+          }
+          root.gridRows = out
+          root.gridLoaded = true
+        } catch (e) { root.gridLoaded = true }
+      }
+    }
+  }
+
   function ensureDrivers() { if (!driversLoaded && !driversProc.running) driversProc.running = true }
   function ensureConstructors() { if (!constructorsLoaded && !constructorsProc.running) constructorsProc.running = true }
+  function ensureGrid() { if (race && !gridLoaded && !gridProc.running) gridProc.running = true }
 
   onViewChanged: {
     if (view === "drivers") ensureDrivers()
     else if (view === "constructors") ensureConstructors()
+    else if (view === "grid") ensureGrid()
+  }
+
+  // Grid is available once qualifying has finished (+~1h buffer) and the race
+  // hasn't started yet. When that window opens, fetch it and swap the default
+  // Schedule view to Grid (like TRMNL); revert if the race then starts.
+  readonly property var qualiStart: race ? sessionDate(race.Qualifying) : null
+  readonly property bool gridApplicable: {
+    if (!qualiStart || !raceStart) return false
+    var qualiDone = nowMs >= qualiStart.getTime() + 60 * 60 * 1000
+    var preRace = nowMs < raceMs
+    return qualiDone && preRace
+  }
+
+  onGridApplicableChanged: {
+    if (gridApplicable) {
+      ensureGrid()
+      if (view === "schedule") view = "grid"
+    } else if (view === "grid") {
+      view = "schedule"
+    }
+  }
+
+  readonly property var tabs: {
+    var t = [{ id: "schedule", label: "Schedule" }]
+    if (gridApplicable) t.push({ id: "grid", label: "Grid" })
+    t.push({ id: "drivers", label: "Drivers" })
+    t.push({ id: "constructors", label: "Constructors" })
+    return t
   }
 
   // Refetch the schedule every 6 hours.
@@ -250,11 +312,7 @@ Panel {
         Row {
           spacing: Style.space(16)
           Repeater {
-            model: [
-              { id: "schedule",     label: "Schedule" },
-              { id: "drivers",      label: "Drivers" },
-              { id: "constructors", label: "Constructors" }
-            ]
+            model: root.tabs
             delegate: Text {
               text: modelData.label
               color: root.view === modelData.id ? Color.accent : Color.muted
@@ -350,6 +408,69 @@ Panel {
                   font.family: Style.font.family
                   font.pixelSize: Style.space(13)
                 }
+              }
+            }
+          }
+        }
+
+        // ---- Grid tab (starting grid = qualifying order) ----
+        Column {
+          visible: root.view === "grid"
+          width: parent.width
+          spacing: Style.space(4)
+          Text {
+            visible: root.gridRows.length === 0
+            text: root.gridLoaded ? "No grid available" : "Loading…"
+            color: Color.muted
+            font.family: Style.font.family
+            font.pixelSize: Style.space(13)
+          }
+          Text {
+            visible: root.gridRows.length > 0
+            width: parent.width
+            bottomPadding: Style.space(2)
+            text: "Starting grid — provisional (excludes penalties)"
+            color: Color.muted
+            font.family: Style.font.family
+            font.pixelSize: Style.space(11)
+            elide: Text.ElideRight
+          }
+          Repeater {
+            model: root.gridRows
+            delegate: Row {
+              width: content.width
+              spacing: Style.space(8)
+              Text {
+                width: Style.space(22)
+                text: modelData.pos
+                color: Color.muted
+                horizontalAlignment: Text.AlignRight
+                font.family: Style.font.family
+                font.pixelSize: Style.space(13)
+              }
+              Text {
+                width: Style.space(40)
+                text: modelData.code
+                color: Color.popups.text
+                font.family: Style.font.family
+                font.pixelSize: Style.space(13)
+                font.bold: true
+              }
+              Text {
+                width: content.width - Style.space(22 + 40 + 76 + 24)
+                text: modelData.team
+                color: Color.muted
+                elide: Text.ElideRight
+                font.family: Style.font.family
+                font.pixelSize: Style.space(13)
+              }
+              Text {
+                width: Style.space(76)
+                text: modelData.time
+                color: Color.popups.text
+                horizontalAlignment: Text.AlignRight
+                font.family: Style.font.family
+                font.pixelSize: Style.space(13)
               }
             }
           }

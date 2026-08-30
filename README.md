@@ -6,6 +6,8 @@ counts down to the next Formula 1 race. Click it for a popup with three tabs:
 - **Schedule** — the circuit outline drawn as a theme-colored line-art hero,
   the countdown, and the full weekend session schedule (practice, sprint,
   qualifying, race) in your **local time**.
+- **Grid** — appears once qualifying is done (and before the race starts): the
+  provisional starting grid, and it becomes the default tab during that window.
 - **Drivers** — current driver championship standings.
 - **Constructors** — current constructor championship standings.
 
