@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "tracks.js" as Tracks
 
 // Fetches the next F1 race + championship standings from the Jolpica
 // (Ergast-compatible) API, exposes a `label`/`tooltip` for the bar pill, and
@@ -35,9 +36,6 @@ Panel {
   property bool driversLoaded: false
   property bool constructorsLoaded: false
 
-  // Circuit outlines keyed by Ergast circuitId (bundled, built by tools/).
-  property var trackData: ({})
-
   readonly property string base: "https://api.jolpi.ca/ergast/f1/"
 
   function openFromHotkey() { open() }
@@ -46,25 +44,13 @@ Panel {
     if (!fetchProc.running) { root.loading = true; fetchProc.running = true }
   }
 
-  Component.onCompleted: {
-    loadTracks()
-    refresh()
-  }
+  Component.onCompleted: refresh()
 
-  // ---- Local track data -------------------------------------------------
-  function loadTracks() {
-    var xhr = new XMLHttpRequest()
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState === XMLHttpRequest.DONE) {
-        try { root.trackData = JSON.parse(xhr.responseText) } catch (e) { root.trackData = ({}) }
-      }
-    }
-    xhr.open("GET", Qt.resolvedUrl("tracks.json"))
-    xhr.send()
-  }
-
+  // ---- Circuit outline data ---------------------------------------------
+  // Bundled as a .pragma library JS module (tracks.js, built by tools/), so no
+  // local-file XMLHttpRequest — Quickshell blocks that by default.
   readonly property string circuitId: (race && race.Circuit) ? (race.Circuit.circuitId || "") : ""
-  readonly property var trackPoints: (circuitId && trackData[circuitId]) ? trackData[circuitId] : []
+  readonly property var trackPoints: (circuitId && Tracks.TRACKS[circuitId]) ? Tracks.TRACKS[circuitId] : []
 
   // ---- Networking -------------------------------------------------------
   Process {

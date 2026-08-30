@@ -12,8 +12,8 @@ counts down to the next Formula 1 race. Click it for a popup with three tabs:
 Data comes from the free [Jolpica-F1 API](https://github.com/jolpica/jolpica-f1)
 (an Ergast-compatible mirror). No API key required. Circuit outlines are bundled
 from [`bacinger/f1-circuits`](https://github.com/bacinger/f1-circuits) (MIT),
-preprocessed into `tracks.json` by `tools/build-tracks.py` and drawn as vector
-paths via QtQuick.Shapes — so they recolor to match your Omarchy theme.
+preprocessed into a `tracks.js` module by `tools/build-tracks.py` and drawn as
+vector paths via QtQuick.Shapes — so they recolor to match your Omarchy theme.
 
 ## Requirements
 
@@ -56,7 +56,7 @@ omarchy-shell shell rescanPlugins     # reload after each edit
 
 MIT (this plugin).
 
-Bundled circuit geometry in `tracks.json` is derived from
+Bundled circuit geometry in `tracks.js` is derived from
 [`bacinger/f1-circuits`](https://github.com/bacinger/f1-circuits),
 Copyright (c) Tomo Bacinger, MIT License. Race data © the Jolpica-F1 project
 (Ergast-compatible API).
