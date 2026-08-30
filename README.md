@@ -43,15 +43,32 @@ git clone https://github.com/<you>/omarchy-f1.git
 cd omarchy-f1
 ./deploy-local.sh                     # symlink into ~/.config/omarchy/plugins + validate
 omarchy plugin enable com.leafbox.f1 right
-omarchy-shell shell rescanPlugins     # reload after each edit
+omarchy restart shell                 # reload after each edit (rescanPlugins alone
+                                      # won't reload changed QML — the shell caches it)
 ```
+
+## Uninstall
+
+```bash
+omarchy plugin disable com.leafbox.f1
+omarchy plugin remove com.leafbox.f1
+omarchy restart shell
+```
+
+## Settings
+
+Open the widget's settings from the Omarchy shell to configure: time format
+(12/24-hour), bar countdown target (next race vs next session), default tab,
+team-color chips on/off, a favorite driver (3-letter code) and team (id) to
+highlight, and an optional pre-race desktop notification with lead time.
 
 ## Interaction
 
 | Action | Result |
 |---|---|
-| Left click | Toggle the schedule popup |
+| Left click | Toggle the popup |
 | Middle click | Force a data refresh |
+| During a live session | The bar flag turns the theme accent color; the tooltip shows the leader/flag |
 
 ## How it works
 
@@ -66,5 +83,6 @@ MIT (this plugin).
 
 Bundled circuit geometry in `tracks.js` is derived from
 [`bacinger/f1-circuits`](https://github.com/bacinger/f1-circuits),
-Copyright (c) Tomo Bacinger, MIT License. Race data © the Jolpica-F1 project
-(Ergast-compatible API).
+Copyright (c) Tomo Bacinger, MIT License. Schedule/standings/results data © the
+[Jolpica-F1](https://github.com/jolpica/jolpica-f1) project (Ergast-compatible
+API); live timing © [OpenF1](https://openf1.org). No API keys required.
