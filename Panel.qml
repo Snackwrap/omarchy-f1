@@ -133,7 +133,8 @@ Panel {
               team: con ? con.name : "",
               teamId: con ? con.constructorId : "",
               pts: d.points,
-              gap: i === 0 ? 0 : (leader - parseFloat(d.points))
+              gap: i === 0 ? 0 : (leader - parseFloat(d.points)),
+              url: (d.Driver && d.Driver.url) ? d.Driver.url : ""
             })
           }
           root.driverRows = out
@@ -161,7 +162,8 @@ Panel {
               name: c.Constructor ? c.Constructor.name : "",
               teamId: c.Constructor ? c.Constructor.constructorId : "",
               pts: c.points,
-              gap: i === 0 ? 0 : (leader - parseFloat(c.points))
+              gap: i === 0 ? 0 : (leader - parseFloat(c.points)),
+              url: (c.Constructor && c.Constructor.url) ? c.Constructor.url : ""
             })
           }
           root.constructorRows = out
@@ -190,7 +192,8 @@ Panel {
               code: (q.Driver && q.Driver.code) ? q.Driver.code : (q.Driver ? q.Driver.familyName.substring(0, 3).toUpperCase() : "?"),
               team: q.Constructor ? q.Constructor.name : "",
               teamId: q.Constructor ? q.Constructor.constructorId : "",
-              detail: q.Q3 || q.Q2 || q.Q1 || ""
+              detail: q.Q3 || q.Q2 || q.Q1 || "",
+              url: (q.Driver && q.Driver.url) ? q.Driver.url : ""
             })
           }
           root.gridRows = out
@@ -221,7 +224,8 @@ Panel {
               team: r.Constructor ? r.Constructor.name : "",
               teamId: r.Constructor ? r.Constructor.constructorId : "",
               detail: detail,
-              pts: r.points
+              pts: r.points,
+              url: (r.Driver && r.Driver.url) ? r.Driver.url : ""
             })
           }
           root.resultsRows = out
@@ -389,10 +393,11 @@ Panel {
   }
 
   readonly property var tabs: {
-    var t = []
-    if (liveActive) t.push({ id: "live", label: "● Live" })
-    t.push({ id: "schedule", label: "Schedule" })
+    // Live is always visible (with an informative empty state when idle) so
+    // users discover the feature before race day; it gains the ● when active.
+    var t = [{ id: "schedule", label: "Schedule" }]
     if (gridApplicable || debug) t.push({ id: "grid", label: "Grid" })
+    t.push({ id: "live", label: liveActive ? "● Live" : "Live" })
     t.push({ id: "results", label: "Last" })
     t.push({ id: "drivers", label: "Drivers" })
     t.push({ id: "constructors", label: "Teams" })
@@ -513,7 +518,8 @@ Panel {
     owner: root.barIdentity
     bar: root.bar
     open: root.opened
-    centerOnBar: true
+    // Anchor under the bar icon by default; "center" setting centers on the bar.
+    centerOnBar: String(root.setting("popupPosition", "icon")) === "center"
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(480))
     contentHeight: panel.fittedContentHeight(content.implicitHeight)
@@ -601,7 +607,46 @@ Panel {
           visible: root.view === "live"
           width: parent.width
           spacing: Style.space(4)
+
+          // Idle empty state: tells users what this tab does and when it wakes.
+          Column {
+            visible: !root.liveActive
+            width: parent.width
+            spacing: Style.space(4)
+            PanelSectionHeader {
+              text: "LIVE TIMING"
+              foreground: Color.popups.text
+              font.letterSpacing: Style.space(2)
+            }
+            Text {
+              width: parent.width
+              text: "No session running right now."
+              color: Color.popups.text
+              font.family: Style.font.family
+              font.pixelSize: Style.space(13)
+            }
+            Text {
+              width: parent.width
+              text: "Live positions and track flags appear here automatically during practice, qualifying and the race."
+              color: Color.muted
+              wrapMode: Text.WordWrap
+              font.family: Style.font.family
+              font.pixelSize: Style.space(12)
+            }
+            Text {
+              visible: !!root.nextSession
+              width: parent.width
+              topPadding: Style.space(4)
+              text: root.nextSession ? ("Next: " + root.nextSession.name + " · " + Qt.formatDateTime(root.nextSession.date, root.dtPattern)) : ""
+              color: Color.accent
+              font.family: Style.font.family
+              font.pixelSize: Style.space(12)
+              font.bold: true
+            }
+          }
+
           Row {
+            visible: root.liveActive
             width: parent.width
             spacing: Style.space(8)
             bottomPadding: Style.space(2)
@@ -652,34 +697,39 @@ Panel {
         }
 
         // ---- Schedule tab ----
-        Column {
+        // The circuit outline is drawn as a large low-opacity watermark behind
+        // the content (TRMNL-style) rather than a small boxed hero.
+        Item {
           visible: root.view === "schedule" && !!root.race
           width: parent.width
-          spacing: Style.space(10)
+          height: scheduleCol.implicitHeight
 
-          Row {
+          TrackMap {
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(6)
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(parent.width * 0.5, Style.space(240))
+            height: Math.min(parent.height * 0.82, Style.space(220))
+            points: root.trackPoints
+            stroke: Color.popups.text
+            strokeWidth: Math.max(2, Style.space(3))
+            opacity: 0.22
+          }
+
+          Column {
+            id: scheduleCol
             width: parent.width
-            spacing: Style.space(14)
-
-            TrackMap {
-              width: Style.space(150)
-              height: Style.space(112)
-              points: root.trackPoints
-              stroke: Color.popups.text
-              strokeWidth: Math.max(1.5, Style.space(2))
-            }
+            spacing: Style.space(10)
 
             Column {
-              width: parent.width - Style.space(150) - Style.space(14)
-              spacing: Style.space(3)
+              width: parent.width
+              spacing: Style.space(2)
               Text {
                 width: parent.width
                 text: (root.race && root.race.Circuit) ? root.race.Circuit.circuitName : ""
                 color: Color.popups.text
                 font.family: Style.font.family
                 font.pixelSize: Style.space(14)
-                wrapMode: Text.WordWrap
-                maximumLineCount: 2
                 elide: Text.ElideRight
               }
               Text {
@@ -694,9 +744,18 @@ Panel {
                 font.pixelSize: Style.space(12)
                 elide: Text.ElideRight
               }
+            }
+
+            Column {
+              width: parent.width
+              spacing: 0
+              PanelSectionHeader {
+                text: "LIGHTS OUT"
+                foreground: Color.popups.text
+                font.letterSpacing: Style.space(2)
+              }
               Text {
                 width: parent.width
-                topPadding: Style.space(6)
                 text: root.raceStart ? root.fmtLong(root.raceMs - root.nowMs) : ""
                 color: Color.accent
                 font.family: Style.font.family
@@ -704,13 +763,17 @@ Panel {
                 font.bold: true
               }
             }
-          }
 
           // Session schedule (local time), next session emphasized
           Column {
             visible: root.sessions.length > 0
             width: parent.width
             spacing: Style.space(4)
+            PanelSectionHeader {
+              text: "SESSIONS"
+              foreground: Color.popups.text
+              font.letterSpacing: Style.space(2)
+            }
             Repeater {
               model: root.sessions
               delegate: Row {
@@ -734,15 +797,9 @@ Panel {
                   font.family: Style.font.family
                   font.pixelSize: Style.space(13)
                 }
-                Text {
-                  visible: isNext
-                  text: root.fmtLong(modelData.date.getTime() - root.nowMs)
-                  color: Color.accent
-                  font.family: Style.font.family
-                  font.pixelSize: Style.space(12)
-                }
               }
             }
+          }
           }
         }
 
@@ -758,11 +815,18 @@ Panel {
             font.family: Style.font.family
             font.pixelSize: Style.space(13)
           }
+          PanelSectionHeader {
+            visible: root.gridRows.length > 0
+            width: parent.width
+            text: "STARTING GRID"
+            foreground: Color.popups.text
+            font.letterSpacing: Style.space(2)
+          }
           Text {
             visible: root.gridRows.length > 0
             width: parent.width
             bottomPadding: Style.space(2)
-            text: "Starting grid — provisional (excludes penalties)"
+            text: "Provisional — excludes penalties"
             color: Color.muted
             font.family: Style.font.family
             font.pixelSize: Style.space(11)
@@ -790,14 +854,12 @@ Panel {
             font.family: Style.font.family
             font.pixelSize: Style.space(13)
           }
-          Text {
+          PanelSectionHeader {
             visible: root.resultsRows.length > 0 && root.resultsRaceName !== ""
             width: parent.width
-            bottomPadding: Style.space(2)
-            text: root.resultsRaceName + " — result"
-            color: Color.muted
-            font.family: Style.font.family
-            font.pixelSize: Style.space(11)
+            text: "LAST RACE · " + root.resultsRaceName.toUpperCase()
+            foreground: Color.popups.text
+            font.letterSpacing: Style.space(2)
             elide: Text.ElideRight
           }
           Repeater {
@@ -823,6 +885,12 @@ Panel {
             font.family: Style.font.family
             font.pixelSize: Style.space(13)
           }
+          PanelSectionHeader {
+            visible: root.driverRows.length > 0
+            text: "DRIVER STANDINGS"
+            foreground: Color.popups.text
+            font.letterSpacing: Style.space(2)
+          }
           Repeater {
             model: root.driverRows.slice(0, 12)
             delegate: StandingRow {
@@ -845,6 +913,12 @@ Panel {
             color: Color.muted
             font.family: Style.font.family
             font.pixelSize: Style.space(13)
+          }
+          PanelSectionHeader {
+            visible: root.constructorRows.length > 0
+            text: "CONSTRUCTOR STANDINGS"
+            foreground: Color.popups.text
+            font.letterSpacing: Style.space(2)
           }
           Repeater {
             model: root.constructorRows
@@ -873,13 +947,29 @@ Panel {
 
   // ---- Row components ---------------------------------------------------
   // A grid/results row: [team chip] pos · code · team · detail(time|status).
-  component ResultRow: Row {
+  component ResultRow: Rectangle {
     id: rr
     property var row: ({})
     property real rowWidth: 0
     property real detailWidth: Style.space(76)
     property string points: ""
     width: rowWidth
+    height: rrRow.implicitHeight + Style.space(5)
+    radius: Style.space(4)
+    color: rrMouse.containsMouse ? Style.hoverFill : "transparent"
+
+    MouseArea {
+      id: rrMouse
+      anchors.fill: parent
+      hoverEnabled: !!rr.row.url
+      cursorShape: rr.row.url ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onClicked: if (rr.row.url && root.bar) root.bar.run("xdg-open '" + String(rr.row.url).replace(/'/g, "") + "'")
+    }
+
+    Row {
+    id: rrRow
+    width: parent.width
+    anchors.verticalCenter: parent.verticalCenter
     spacing: Style.space(8)
     Rectangle {
       width: Style.space(3); height: Style.space(15); radius: 1
@@ -914,16 +1004,33 @@ Panel {
       color: Color.muted; horizontalAlignment: Text.AlignRight
       font.family: Style.font.family; font.pixelSize: Style.space(13)
     }
+    }
   }
 
   // A standings row: [team chip] pos · primary · secondary · gap · points.
-  component StandingRow: Row {
+  component StandingRow: Rectangle {
     id: sr
     property var row: ({})
     property real rowWidth: 0
     property string primary: ""
     property string secondary: ""
     width: rowWidth
+    height: srRow.implicitHeight + Style.space(5)
+    radius: Style.space(4)
+    color: srMouse.containsMouse ? Style.hoverFill : "transparent"
+
+    MouseArea {
+      id: srMouse
+      anchors.fill: parent
+      hoverEnabled: !!sr.row.url
+      cursorShape: sr.row.url ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onClicked: if (sr.row.url && root.bar) root.bar.run("xdg-open '" + String(sr.row.url).replace(/'/g, "") + "'")
+    }
+
+    Row {
+    id: srRow
+    width: parent.width
+    anchors.verticalCenter: parent.verticalCenter
     spacing: Style.space(8)
     Rectangle {
       width: Style.space(3); height: Style.space(15); radius: 1
@@ -957,6 +1064,7 @@ Panel {
       width: Style.space(52); text: sr.row.pts
       color: Color.popups.text; horizontalAlignment: Text.AlignRight
       font.family: Style.font.family; font.pixelSize: Style.space(13); font.bold: true
+    }
     }
   }
 }

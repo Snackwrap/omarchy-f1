@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "com.leafbox.f1",
   "name": "Formula 1",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "author": "Robert (leafbox)",
   "license": "MIT",
   "homepage": "https://github.com/Snackwrap/omarchy-f1",
@@ -29,6 +29,7 @@
       "favoriteTeam": "",
       "notifyRace": false,
       "notifyLeadMin": 10,
+      "popupPosition": "icon",
       "debugForceTabs": false
     },
     "schema": [
@@ -95,6 +96,16 @@
         "max": 120,
         "step": 5,
         "defaultValue": 10
+      },
+      {
+        "key": "popupPosition",
+        "type": "enum",
+        "label": "Popup position",
+        "options": [
+          { "value": "icon", "label": "Under the bar icon" },
+          { "value": "center", "label": "Centered on the bar" }
+        ],
+        "defaultValue": "icon"
       },
       {
         "key": "debugForceTabs",
