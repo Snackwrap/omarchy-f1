@@ -5,6 +5,8 @@
   "version": "0.7.2",
   "author": "Robert (leafbox)",
   "license": "MIT",
+  "homepage": "https://github.com/Snackwrap/omarchy-f1",
+  "repository": "https://github.com/Snackwrap/omarchy-f1",
   "description": "Countdown to the next Formula 1 race in the Omarchy bar, with a popup showing the circuit outline, weekend session schedule in local time, starting grid, last-race results, championship standings, and live timing during sessions.",
   "keywords": ["f1", "formula1", "racing", "motorsport", "bar", "quickshell"],
   "kinds": ["bar-widget"],
