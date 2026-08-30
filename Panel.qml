@@ -46,8 +46,16 @@ Panel {
   // Notification bookkeeping.
   property int notifiedRound: -1
 
+  // Live timing (OpenF1). Only polled while near a scheduled session.
+  property var driversMap: ({})
+  property bool driversMapLoaded: false
+  property var livePosRows: []
+  property double liveLatestMs: 0
+  property string liveFlag: ""
+
   readonly property string base: "https://api.jolpi.ca/ergast/f1/"
-  readonly property string ua: "omarchy-f1/0.6"
+  readonly property string openf1: "https://api.openf1.org/v1/"
+  readonly property string ua: "omarchy-f1/0.7"
 
   // ---- Settings ---------------------------------------------------------
   readonly property string timeFormat: String(setting("timeFormat", "24h"))
@@ -221,6 +229,132 @@ Panel {
 
   Process { id: notifyProc; command: ["true"] }
 
+  // ---- Live timing (OpenF1) ---------------------------------------------
+  // Gated by nearSession (Jolpica schedule) so we never poll OpenF1 outside a
+  // session window. Uses session_key=latest, which resolves to the current
+  // session during that window; a freshness check guards against stale data.
+  Process {
+    id: ofDriversProc
+    command: ["curl", "-fsS", "--max-time", "10", root.openf1 + "drivers?session_key=latest"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          var arr = JSON.parse(String(text || ""))
+          var m = {}
+          for (var i = 0; i < arr.length; i++) {
+            var d = arr[i]
+            m[d.driver_number] = {
+              acr: d.name_acronym || ("#" + d.driver_number),
+              color: d.team_colour ? ("#" + d.team_colour) : "",
+              team: d.team_name || ""
+            }
+          }
+          root.driversMap = m
+          root.driversMapLoaded = true
+        } catch (e) { root.driversMapLoaded = true }
+      }
+    }
+  }
+
+  Process {
+    id: ofPosProc
+    command: ["curl", "-fsS", "--max-time", "12", root.openf1 + "position?session_key=latest"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          var arr = JSON.parse(String(text || ""))
+          var latest = {}
+          for (var i = 0; i < arr.length; i++) {
+            var r = arr[i]
+            var n = r.driver_number
+            if (!latest[n] || r.date > latest[n].date) latest[n] = { pos: r.position, date: r.date }
+          }
+          var rows = []
+          var maxMs = 0
+          for (var num in latest) {
+            var t = new Date(latest[num].date).getTime()
+            if (t > maxMs) maxMs = t
+            var info = root.driversMap[num] || {}
+            rows.push({ pos: latest[num].pos, code: info.acr || ("#" + num), color: info.color || "", team: info.team || "" })
+          }
+          rows.sort(function(a, b) { return a.pos - b.pos })
+          root.livePosRows = rows
+          root.liveLatestMs = maxMs
+        } catch (e) { /* keep last-good */ }
+      }
+    }
+  }
+
+  Process {
+    id: ofFlagProc
+    command: ["curl", "-fsS", "--max-time", "10", root.openf1 + "race_control?session_key=latest"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          var arr = JSON.parse(String(text || ""))
+          var last = ""
+          for (var i = 0; i < arr.length; i++)
+            if (arr[i].category === "Flag" && arr[i].scope === "Track" && arr[i].flag) last = arr[i].flag
+          root.liveFlag = last
+        } catch (e) { /* ignore */ }
+      }
+    }
+  }
+
+  // Near a scheduled session? (15 min before start .. 3 h after) — the only
+  // window in which we touch OpenF1 at all.
+  readonly property bool nearSession: {
+    for (var i = 0; i < sessions.length; i++) {
+      var t = sessions[i].date.getTime()
+      if (nowMs >= t - 15 * 60000 && nowMs <= t + 3 * 3600000) return true
+    }
+    return false
+  }
+
+  // Live only when near a session AND the position feed is genuinely fresh
+  // (guards against session_key=latest resolving to a finished race).
+  readonly property bool liveFresh: liveLatestMs > 0 && (nowMs - liveLatestMs) < 15 * 60000
+  readonly property bool liveActive: nearSession && livePosRows.length > 0 && liveFresh
+  readonly property string liveLeader: (liveActive && livePosRows.length) ? livePosRows[0].code : ""
+  readonly property string liveLabelPrefix: " LIVE" + (liveLeader ? " " + liveLeader : "")
+
+  function pollLive() {
+    if (!nearSession) return
+    if (!driversMapLoaded && !ofDriversProc.running) ofDriversProc.running = true
+    if (!ofPosProc.running) ofPosProc.running = true
+    if (!ofFlagProc.running) ofFlagProc.running = true
+  }
+
+  onNearSessionChanged: {
+    if (nearSession) pollLive()
+    else { driversMapLoaded = false; livePosRows = []; liveLatestMs = 0; liveFlag = "" }
+  }
+
+  onLiveActiveChanged: {
+    if (liveActive) { if (view === "schedule" || view === "grid") view = "live" }
+    else if (view === "live") view = "schedule"
+  }
+
+  // Poll live data every 15s while near a session (well under OpenF1's 30/min).
+  Timer {
+    interval: 15000
+    running: root.nearSession
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.pollLive()
+  }
+
+  function friendlyFlag(f) {
+    if (!f) return ""
+    var map = { "GREEN": "Green flag", "CLEAR": "Track clear", "YELLOW": "Yellow flag",
+      "DOUBLE YELLOW": "Double yellow", "RED": "Red flag", "CHEQUERED": "Chequered flag",
+      "BLUE": "Blue flag" }
+    return map[f] || f
+  }
+
   function ensureDrivers() { if (!driversLoaded && !driversProc.running) driversProc.running = true }
   function ensureConstructors() { if (!constructorsLoaded && !constructorsProc.running) constructorsProc.running = true }
   function ensureGrid() { if (race && !gridLoaded && !gridProc.running) gridProc.running = true }
@@ -251,7 +385,9 @@ Panel {
   }
 
   readonly property var tabs: {
-    var t = [{ id: "schedule", label: "Schedule" }]
+    var t = []
+    if (liveActive) t.push({ id: "live", label: "● Live" })
+    t.push({ id: "schedule", label: "Schedule" })
     if (gridApplicable) t.push({ id: "grid", label: "Grid" })
     t.push({ id: "results", label: "Last" })
     t.push({ id: "drivers", label: "Drivers" })
@@ -350,6 +486,7 @@ Panel {
   }
 
   readonly property string label: {
+    if (liveActive) return liveLabelPrefix
     if (!race || !raceStart) return ""
     return " " + fmtShort(pillTargetMs - nowMs)  // nf-fa-flag_checkered
   }
@@ -428,6 +565,61 @@ Panel {
                 anchors.margins: -Style.space(4)
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.view = modelData.id
+              }
+            }
+          }
+        }
+
+        // ---- Live tab (OpenF1 running order) ----
+        Column {
+          visible: root.view === "live"
+          width: parent.width
+          spacing: Style.space(4)
+          Row {
+            width: parent.width
+            spacing: Style.space(8)
+            bottomPadding: Style.space(2)
+            Text {
+              text: "● LIVE"
+              color: Color.accent
+              font.family: Style.font.family
+              font.pixelSize: Style.space(12)
+              font.bold: true
+            }
+            Text {
+              visible: root.liveFlag !== ""
+              text: root.friendlyFlag(root.liveFlag)
+              color: Color.muted
+              font.family: Style.font.family
+              font.pixelSize: Style.space(12)
+            }
+          }
+          Repeater {
+            model: root.livePosRows.slice(0, 20)
+            delegate: Row {
+              width: content.width
+              spacing: Style.space(8)
+              Rectangle {
+                width: Style.space(3); height: Style.space(15); radius: 1
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.teamColorsOn && modelData.color !== ""
+                color: modelData.color !== "" ? modelData.color : Color.muted
+              }
+              Text {
+                width: Style.space(22); text: modelData.pos
+                color: (modelData.pos <= 3) ? Color.popups.text : Color.muted
+                horizontalAlignment: Text.AlignRight
+                font.family: Style.font.family; font.pixelSize: Style.space(13)
+              }
+              Text {
+                width: Style.space(44); text: modelData.code
+                color: (root.favDriver !== "" && modelData.code === root.favDriver) ? Color.accent : Color.popups.text
+                font.family: Style.font.family; font.pixelSize: Style.space(13); font.bold: true
+              }
+              Text {
+                width: content.width - Style.space(3 + 22 + 44 + 24)
+                text: modelData.team; color: Color.muted; elide: Text.ElideRight
+                font.family: Style.font.family; font.pixelSize: Style.space(13)
               }
             }
           }

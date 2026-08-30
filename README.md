@@ -1,11 +1,12 @@
 # Formula 1 — Omarchy bar plugin
 
 A checkered-flag pill for the [Omarchy](https://omarchy.org) (Quattro) bar that
-counts down to the next Formula 1 race. Click it for a popup with three tabs:
+counts down to the next Formula 1 session. Click it for a popup with these tabs:
 
 - **Schedule** — the circuit outline drawn as a theme-colored line-art hero,
   the countdown, and the full weekend session schedule (practice, sprint,
   qualifying, race) in your **local time**.
+- **Live** — during a race weekend session, live running order (leader, positions, team colors) and track-flag status via the OpenF1 API; the pill shows a LIVE indicator and the tab auto-opens. Only polled while a session is on.
 - **Grid** — appears once qualifying is done (and before the race starts): the
   provisional starting grid, and it becomes the default tab during that window.
 - **Last** — the most recent race result (finishing order, gaps/status, points).
