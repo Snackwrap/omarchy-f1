@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "com.leafbox.f1",
   "name": "Formula 1",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "author": "Robert (leafbox)",
   "license": "MIT",
   "homepage": "https://github.com/Snackwrap/omarchy-f1",

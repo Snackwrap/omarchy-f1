@@ -515,7 +515,7 @@ Panel {
     open: root.opened
     centerOnBar: true
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(440))
+    contentWidth: panel.fittedContentWidth(Style.space(480))
     contentHeight: panel.fittedContentHeight(content.implicitHeight)
 
     PanelKeyCatcher {
@@ -529,50 +529,71 @@ Panel {
         width: parent.width
         spacing: Style.space(10)
 
-        // Header
-        Column {
+        // Masthead: flag + wordmark on the left, round/season on the right.
+        // (Custom wordmark, not the trademarked F1 logo.)
+        Item {
           width: parent.width
-          spacing: Style.space(2)
-          Text {
-            width: parent.width
-            text: root.race ? root.race.raceName : (root.loading ? "Loading…" : "No upcoming race")
-            color: Color.popups.text
-            font.family: Style.font.family
-            font.pixelSize: Style.space(20)
-            font.bold: true
-            elide: Text.ElideRight
+          height: brandRow.implicitHeight
+          Row {
+            id: brandRow
+            spacing: Style.space(7)
+            anchors.left: parent.left
+            Text {
+              text: ""
+              color: Color.accent
+              font.family: Style.font.family
+              font.pixelSize: Style.space(14)
+              anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+              text: "FORMULA 1"
+              color: Color.muted
+              font.family: Style.font.family
+              font.pixelSize: Style.space(11)
+              font.bold: true
+              font.letterSpacing: Style.space(3)
+              anchors.verticalCenter: parent.verticalCenter
+            }
           }
           Text {
-            visible: !!root.race
-            width: parent.width
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
             text: root.race ? ("Round " + root.race.round + " · " + root.race.season) : ""
             color: Color.muted
             font.family: Style.font.family
-            font.pixelSize: Style.space(12)
-            elide: Text.ElideRight
+            font.pixelSize: Style.space(11)
           }
         }
 
-        // Tab bar (Flow so it wraps if the theme font is wide)
-        Flow {
+        PanelSeparator { foreground: Color.popups.text }
+
+        // Race name
+        Text {
           width: parent.width
-          spacing: Style.space(16)
-          Repeater {
-            model: root.tabs
-            delegate: Text {
-              text: modelData.label
-              color: root.view === modelData.id ? Color.accent : Color.muted
-              font.family: Style.font.family
-              font.pixelSize: Style.space(13)
-              font.bold: root.view === modelData.id
-              MouseArea {
-                anchors.fill: parent
-                anchors.margins: -Style.space(4)
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.view = modelData.id
-              }
-            }
+          text: root.race ? root.race.raceName : (root.loading ? "Loading…" : "No upcoming race")
+          color: Color.popups.text
+          font.family: Style.font.family
+          font.pixelSize: Style.space(20)
+          font.bold: true
+          elide: Text.ElideRight
+        }
+
+        // Tab bar: the shell's segmented control, so tabs read as buttons and
+        // pick up the theme's hover/selected chrome.
+        ButtonGroup {
+          options: {
+            var o = []
+            for (var i = 0; i < root.tabs.length; i++)
+              o.push({ value: root.tabs[i].id, label: root.tabs[i].label })
+            return o
           }
+          value: root.view
+          focusable: false
+          foreground: Color.popups.text
+          background: Color.popups.background
+          accent: Color.accent
+          fontSize: Style.space(12)
+          onChanged: function(v) { root.view = v }
         }
 
         // ---- Live tab (OpenF1 running order) ----
