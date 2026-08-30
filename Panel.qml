@@ -67,6 +67,9 @@ Panel {
   readonly property bool teamColorsOn: boolSetting("teamColors", true)
   readonly property bool notifyOn: boolSetting("notifyRace", false)
   readonly property int notifyLead: parseInt(String(setting("notifyLeadMin", 10)), 10) || 0
+  // Debug: force Grid & Live tabs to render using last-race data, so they can be
+  // previewed outside a live session window.
+  readonly property bool debug: boolSetting("debugForceTabs", false)
 
   function openFromHotkey() { open() }
 
@@ -171,7 +174,8 @@ Panel {
   Process {
     id: gridProc
     command: ["curl", "-fsS", "-A", root.ua, "--max-time", "10",
-              root.base + "current/" + (root.race ? root.race.round : "") + "/qualifying.json"]
+              root.debug ? (root.base + "current/last/qualifying.json")
+                         : (root.base + "current/" + (root.race ? root.race.round : "") + "/qualifying.json")]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -317,12 +321,12 @@ Panel {
   // Live only when near a session AND the position feed is genuinely fresh
   // (guards against session_key=latest resolving to a finished race).
   readonly property bool liveFresh: liveLatestMs > 0 && (nowMs - liveLatestMs) < 15 * 60000
-  readonly property bool liveActive: nearSession && livePosRows.length > 0 && liveFresh
+  readonly property bool liveActive: livePosRows.length > 0 && (debug || (nearSession && liveFresh))
   readonly property string liveLeader: (liveActive && livePosRows.length) ? livePosRows[0].code : ""
   readonly property string liveLabelPrefix: " LIVE" + (liveLeader ? " " + liveLeader : "")
 
   function pollLive() {
-    if (!nearSession) return
+    if (!nearSession && !debug) return
     if (!driversMapLoaded && !ofDriversProc.running) ofDriversProc.running = true
     if (!ofPosProc.running) ofPosProc.running = true
     if (!ofFlagProc.running) ofFlagProc.running = true
@@ -330,7 +334,7 @@ Panel {
 
   onNearSessionChanged: {
     if (nearSession) pollLive()
-    else { driversMapLoaded = false; livePosRows = []; liveLatestMs = 0; liveFlag = "" }
+    else if (!debug) { driversMapLoaded = false; livePosRows = []; liveLatestMs = 0; liveFlag = "" }
   }
 
   onLiveActiveChanged: {
@@ -341,7 +345,7 @@ Panel {
   // Poll live data every 15s while near a session (well under OpenF1's 30/min).
   Timer {
     interval: 15000
-    running: root.nearSession
+    running: root.nearSession || root.debug
     repeat: true
     triggeredOnStart: true
     onTriggered: root.pollLive()
@@ -357,7 +361,7 @@ Panel {
 
   function ensureDrivers() { if (!driversLoaded && !driversProc.running) driversProc.running = true }
   function ensureConstructors() { if (!constructorsLoaded && !constructorsProc.running) constructorsProc.running = true }
-  function ensureGrid() { if (race && !gridLoaded && !gridProc.running) gridProc.running = true }
+  function ensureGrid() { if ((race || debug) && !gridLoaded && !gridProc.running) gridProc.running = true }
   function ensureResults() { if (!resultsLoaded && !resultsProc.running) resultsProc.running = true }
 
   onViewChanged: {
@@ -388,7 +392,7 @@ Panel {
     var t = []
     if (liveActive) t.push({ id: "live", label: "● Live" })
     t.push({ id: "schedule", label: "Schedule" })
-    if (gridApplicable) t.push({ id: "grid", label: "Grid" })
+    if (gridApplicable || debug) t.push({ id: "grid", label: "Grid" })
     t.push({ id: "results", label: "Last" })
     t.push({ id: "drivers", label: "Drivers" })
     t.push({ id: "constructors", label: "Teams" })
