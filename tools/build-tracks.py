@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Build tracks.json (circuit outlines keyed by Ergast circuitId) for the plugin.
+
+Downloads the bacinger/f1-circuits GeoJSON, maps each circuit to its Ergast
+`circuitId`, applies a cos(latitude) aspect correction and a Y-flip (so north is
+up in screen coordinates), and writes compact [x, y] point arrays. The plugin
+just fits these to its draw box at runtime.
+
+Run:  python3 tools/build-tracks.py
+"""
+import json
+import math
+import os
+import urllib.request
+
+GEOJSON_URL = "https://raw.githubusercontent.com/bacinger/f1-circuits/master/f1-circuits.geojson"
+
+# Ergast/Jolpica circuitId -> bacinger feature id (<country>-<year-opened>).
+CIRCUIT_MAP = {
+    "albert_park": "au-1953", "americas": "us-2012", "bahrain": "bh-2002",
+    "baku": "az-2016", "catalunya": "es-1991", "estoril": "pt-1972",
+    "galvez": "ar-1952", "hockenheimring": "de-1932", "hungaroring": "hu-1986",
+    "imola": "it-1953", "indianapolis": "us-1909", "interlagos": "br-1940",
+    "istanbul": "tr-2005", "jacarepagua": "br-1977", "jeddah": "sa-2021",
+    "kyalami": "za-1961", "losail": "qa-2004", "madring": "es-2026",
+    "magny_cours": "fr-1960", "marina_bay": "sg-2008", "miami": "us-2022",
+    "monaco": "mc-1929", "monza": "it-1922", "mugello": "it-1914",
+    "nurburgring": "de-1927", "portimao": "pt-2008", "red_bull_ring": "at-1969",
+    "ricard": "fr-1969", "rodriguez": "mx-1962", "sepang": "my-1999",
+    "shanghai": "cn-2004", "silverstone": "gb-1948", "sochi": "ru-2014",
+    "spa": "be-1925", "suzuka": "jp-1962", "vegas": "us-2023",
+    "villeneuve": "ca-1978", "watkins_glen": "us-1956", "yas_marina": "ae-2009",
+    "zandvoort": "nl-1948",
+}
+
+
+def normalize(coords):
+    """coords: list of [lon, lat] -> list of [x, y] with aspect correction + Y flip."""
+    mean_lat = sum(c[1] for c in coords) / len(coords)
+    k = math.cos(math.radians(mean_lat))
+    pts = [[c[0] * k, -c[1]] for c in coords]  # scale lon by cos(lat); flip lat for screen-down Y
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    minx, miny = min(xs), min(ys)
+    span = max(max(xs) - minx, max(ys) - miny) or 1.0
+    # Fit into a unit box (longer side = 1.0), 4-decimal rounding keeps it small.
+    return [[round((p[0] - minx) / span, 4), round((p[1] - miny) / span, 4)] for p in pts]
+
+
+def main():
+    here = os.path.dirname(os.path.abspath(__file__))
+    out_path = os.path.join(here, os.pardir, "tracks.json")
+
+    print(f"Downloading {GEOJSON_URL} ...")
+    with urllib.request.urlopen(GEOJSON_URL, timeout=30) as r:
+        gj = json.load(r)
+
+    by_id = {f["properties"]["id"]: f for f in gj["features"]}
+    tracks = {}
+    missing = []
+    for circuit_id, bac_id in CIRCUIT_MAP.items():
+        feat = by_id.get(bac_id)
+        if not feat:
+            missing.append((circuit_id, bac_id))
+            continue
+        tracks[circuit_id] = normalize(feat["geometry"]["coordinates"])
+
+    with open(out_path, "w") as f:
+        json.dump(tracks, f, separators=(",", ":"))
+    size = os.path.getsize(out_path)
+    print(f"Wrote {out_path}: {len(tracks)} circuits, {size} bytes")
+    if missing:
+        print("MISSING (no bacinger feature):", missing)
+
+
+if __name__ == "__main__":
+    main()

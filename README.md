@@ -1,12 +1,19 @@
 # Formula 1 — Omarchy bar plugin
 
 A checkered-flag pill for the [Omarchy](https://omarchy.org) (Quattro) bar that
-counts down to the next Formula 1 race. Click it for a popup with the circuit
-and the full weekend session schedule (practice, sprint, qualifying, race) in
-your **local time**.
+counts down to the next Formula 1 race. Click it for a popup with three tabs:
+
+- **Schedule** — the circuit outline drawn as a theme-colored line-art hero,
+  the countdown, and the full weekend session schedule (practice, sprint,
+  qualifying, race) in your **local time**.
+- **Drivers** — current driver championship standings.
+- **Constructors** — current constructor championship standings.
 
 Data comes from the free [Jolpica-F1 API](https://github.com/jolpica/jolpica-f1)
-(an Ergast-compatible mirror). No API key required.
+(an Ergast-compatible mirror). No API key required. Circuit outlines are bundled
+from [`bacinger/f1-circuits`](https://github.com/bacinger/f1-circuits) (MIT),
+preprocessed into `tracks.json` by `tools/build-tracks.py` and drawn as vector
+paths via QtQuick.Shapes — so they recolor to match your Omarchy theme.
 
 ## Requirements
 

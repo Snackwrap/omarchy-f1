@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "com.leafbox.f1",
   "name": "Formula 1",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Robert (leafbox)",
   "license": "MIT",
   "description": "Countdown to the next Formula 1 race in the Omarchy bar, with a popup showing the full weekend session schedule in your local time. Data from the Jolpica (Ergast-compatible) API.",
