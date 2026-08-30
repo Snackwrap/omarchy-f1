@@ -2,20 +2,96 @@
   "schemaVersion": 1,
   "id": "com.leafbox.f1",
   "name": "Formula 1",
-  "version": "0.3.0",
+  "version": "0.6.0",
   "author": "Robert (leafbox)",
   "license": "MIT",
-  "description": "Countdown to the next Formula 1 race in the Omarchy bar, with a popup showing the full weekend session schedule in your local time. Data from the Jolpica (Ergast-compatible) API.",
+  "description": "Countdown to the next Formula 1 race in the Omarchy bar, with a popup showing the circuit outline, weekend session schedule in local time, starting grid, last-race results, and championship standings. Data from the Jolpica (Ergast-compatible) API.",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "Formula 1",
-    "description": "Checkered-flag pill showing the countdown to the next F1 race; click to open the session schedule.",
+    "description": "Checkered-flag pill showing the countdown to the next F1 session; click for circuit, schedule, grid, results and standings.",
     "category": "Info",
     "aliases": ["f1", "formula1", "formula 1", "grand prix", "racing"],
     "allowMultiple": false,
-    "defaultSection": "right"
+    "defaultSection": "right",
+    "defaults": {
+      "timeFormat": "24h",
+      "countdownTarget": "race",
+      "defaultTab": "schedule",
+      "teamColors": true,
+      "favoriteDriver": "",
+      "favoriteTeam": "",
+      "notifyRace": false,
+      "notifyLeadMin": 10
+    },
+    "schema": [
+      {
+        "key": "timeFormat",
+        "type": "enum",
+        "label": "Time format",
+        "options": [
+          { "value": "24h", "label": "24-hour" },
+          { "value": "12h", "label": "12-hour" }
+        ],
+        "defaultValue": "24h"
+      },
+      {
+        "key": "countdownTarget",
+        "type": "enum",
+        "label": "Bar countdown target",
+        "options": [
+          { "value": "race", "label": "Next race" },
+          { "value": "session", "label": "Next session" }
+        ],
+        "defaultValue": "race"
+      },
+      {
+        "key": "defaultTab",
+        "type": "enum",
+        "label": "Default tab",
+        "options": [
+          { "value": "schedule", "label": "Schedule" },
+          { "value": "drivers", "label": "Drivers" },
+          { "value": "constructors", "label": "Constructors" }
+        ],
+        "defaultValue": "schedule"
+      },
+      {
+        "key": "teamColors",
+        "type": "boolean",
+        "label": "Show team colors",
+        "defaultValue": true
+      },
+      {
+        "key": "favoriteDriver",
+        "type": "string",
+        "label": "Highlight driver (3-letter code, e.g. VER)",
+        "defaultValue": ""
+      },
+      {
+        "key": "favoriteTeam",
+        "type": "string",
+        "label": "Highlight team (id, e.g. ferrari)",
+        "defaultValue": ""
+      },
+      {
+        "key": "notifyRace",
+        "type": "boolean",
+        "label": "Notify before race start",
+        "defaultValue": false
+      },
+      {
+        "key": "notifyLeadMin",
+        "type": "integer",
+        "label": "Notify lead time (minutes)",
+        "min": 0,
+        "max": 120,
+        "step": 5,
+        "defaultValue": 10
+      }
+    ]
   }
 }

@@ -3,14 +3,16 @@ import QtQuick.Shapes
 
 // Draws a circuit outline as a single stroked vector polyline. `points` is an
 // array of [x, y] pairs in a unit box (as produced by tools/build-tracks.py);
-// they're fit-to-box with uniform scale, centered, on every resize.
+// they're fit-to-box with uniform scale, centered, on every resize. An optional
+// start/finish tick is drawn perpendicular to the first segment.
 Item {
   id: root
 
   property var points: []
   property color stroke: "#cacccc"
   property real strokeWidth: 2
-  property real pad: 4
+  property real pad: 6
+  property bool showStart: true
 
   readonly property bool hasTrack: points && points.length > 1
 
@@ -40,10 +42,23 @@ Item {
     return out
   }
 
+  // Two points for a short line across the track at the start/finish.
+  function startTick() {
+    var fp = fittedPoints()
+    if (fp.length < 2) return []
+    var a = fp[0], b = fp[1]
+    var dx = b.x - a.x, dy = b.y - a.y
+    var len = Math.hypot(dx, dy) || 1
+    var nx = -dy / len, ny = dx / len
+    var half = Math.max(4, Math.min(width, height) * 0.07)
+    return [Qt.point(a.x - nx * half, a.y - ny * half), Qt.point(a.x + nx * half, a.y + ny * half)]
+  }
+
   Shape {
     anchors.fill: parent
     visible: root.hasTrack
     antialiasing: true
+
     ShapePath {
       strokeColor: root.stroke
       strokeWidth: root.strokeWidth
@@ -53,6 +68,16 @@ Item {
       PathPolyline {
         // Re-evaluates on width/height/points changes (all read inside).
         path: root.fittedPoints()
+      }
+    }
+
+    ShapePath {
+      strokeColor: root.stroke
+      strokeWidth: root.strokeWidth * 1.8
+      fillColor: "transparent"
+      capStyle: ShapePath.FlatCap
+      PathPolyline {
+        path: root.showStart ? root.startTick() : []
       }
     }
   }

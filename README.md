@@ -8,8 +8,13 @@ counts down to the next Formula 1 race. Click it for a popup with three tabs:
   qualifying, race) in your **local time**.
 - **Grid** — appears once qualifying is done (and before the race starts): the
   provisional starting grid, and it becomes the default tab during that window.
-- **Drivers** — current driver championship standings.
-- **Constructors** — current constructor championship standings.
+- **Last** — the most recent race result (finishing order, gaps/status, points).
+- **Drivers** / **Teams** — driver and constructor championship standings, with
+  team-color chips, podium emphasis, and points-behind-leader gaps.
+
+Team-color chips, a favorite driver/team highlight, 12/24-hour time, the bar
+countdown target (next race vs next session), the default tab, and an optional
+race-start desktop notification are all configurable in the widget's settings.
 
 Data comes from the free [Jolpica-F1 API](https://github.com/jolpica/jolpica-f1)
 (an Ergast-compatible mirror). No API key required. Circuit outlines are bundled
