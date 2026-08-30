@@ -1,5 +1,7 @@
 # Formula 1 — Omarchy bar plugin
 
+![omarchy-f1](preview.png)
+
 A checkered-flag pill for the [Omarchy](https://omarchy.org) (Quattro) bar that
 counts down to the next Formula 1 session. Click it for a popup with these tabs:
 
