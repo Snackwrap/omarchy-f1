@@ -323,7 +323,7 @@ Panel {
   readonly property bool liveFresh: liveLatestMs > 0 && (nowMs - liveLatestMs) < 15 * 60000
   readonly property bool liveActive: livePosRows.length > 0 && (debug || (nearSession && liveFresh))
   readonly property string liveLeader: (liveActive && livePosRows.length) ? livePosRows[0].code : ""
-  readonly property string liveLabelPrefix: " LIVE" + (liveLeader ? " " + liveLeader : "")
+  readonly property string liveLabelPrefix: ""  // live: flag glyph only; color signals live
 
   function pollLive() {
     if (!nearSession && !debug) return
@@ -496,6 +496,7 @@ Panel {
   }
 
   readonly property string tooltip: {
+    if (liveActive) return "LIVE" + (liveLeader ? " · P1 " + liveLeader : "") + (liveFlag ? " · " + friendlyFlag(liveFlag) : "")
     if (!race) return "Formula 1"
     return (race.raceName || "Next race") + (raceStart ? " — " + Qt.formatDateTime(raceStart, longPattern) : "")
   }

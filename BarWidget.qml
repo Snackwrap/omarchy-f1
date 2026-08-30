@@ -69,6 +69,11 @@ BarWidget {
     text: panelLoader.item ? panelLoader.item.label : ""
     slotSize: Style.bar.statusSlot
     tooltipText: panelLoader.item ? panelLoader.item.tooltip : "Formula 1"
+    // During a live session tint the flag with the theme's attention color
+    // instead of widening the pill with LIVE text.
+    foreground: (panelLoader.item && panelLoader.item.liveActive === true)
+      ? Color.bar.active
+      : (root.bar ? root.bar.barForeground : Color.foreground)
 
     onPressed: function(b) {
       if (!root.bar) return
