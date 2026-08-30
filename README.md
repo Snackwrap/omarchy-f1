@@ -54,4 +54,9 @@ omarchy-shell shell rescanPlugins     # reload after each edit
 
 ## License
 
-MIT
+MIT (this plugin).
+
+Bundled circuit geometry in `tracks.json` is derived from
+[`bacinger/f1-circuits`](https://github.com/bacinger/f1-circuits),
+Copyright (c) Tomo Bacinger, MIT License. Race data © the Jolpica-F1 project
+(Ergast-compatible API).
