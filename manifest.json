@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "com.leafbox.f1",
+  "name": "Formula 1",
+  "version": "0.1.0",
+  "author": "Robert (leafbox)",
+  "license": "MIT",
+  "description": "Countdown to the next Formula 1 race in the Omarchy bar, with a popup showing the full weekend session schedule in your local time. Data from the Jolpica (Ergast-compatible) API.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Formula 1",
+    "description": "Checkered-flag pill showing the countdown to the next F1 race; click to open the session schedule.",
+    "category": "Info",
+    "aliases": ["f1", "formula1", "formula 1", "grand prix", "racing"],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
