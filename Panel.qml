@@ -66,6 +66,9 @@ Panel {
   function boolSetting(name, dflt) { var v = setting(name, dflt); return v === true || v === "true" || v === 1 }
   readonly property bool teamColorsOn: boolSetting("teamColors", true)
   readonly property bool notifyOn: boolSetting("notifyRace", false)
+  // One switch for both flourishes: the circuit's Mode 7 flip-in and the start
+  // lights. Off leaves the panel completely still.
+  readonly property bool animOn: boolSetting("raceAnimations", true)
   readonly property int notifyLead: parseInt(String(setting("notifyLeadMin", 10)), 10) || 0
   // Debug: force Grid & Live tabs to render using last-race data, so they can be
   // previewed outside a live session window.
@@ -373,6 +376,7 @@ Panel {
     else if (view === "constructors") ensureConstructors()
     else if (view === "grid") ensureGrid()
     else if (view === "results") ensureResults()
+    else if (view === "schedule" && opened) Qt.callLater(playIntro)
   }
 
   // Grid is available once qualifying has finished (+~1h buffer) and the race
@@ -424,6 +428,28 @@ Panel {
       notifyProc.running = true
     }
   }
+
+  // ---- Intro flourishes --------------------------------------------------
+  // The gantry is only meaningful around the race itself: from three hours
+  // before lights out until roughly the flag. Outside that it would be
+  // decoration pretending to be a signal, so it is not drawn at all.
+  readonly property bool raceDay: {
+    if (debug) return true   // same escape hatch the Grid/Live tabs use
+    if (!raceStart) return false
+    return nowMs >= raceMs - 3 * 3600000 && nowMs < raceMs + 3 * 3600000
+  }
+  // Lights out *is* the start, so the sequence only ends dark once the race is
+  // actually running; before that it holds on all five, which is the real
+  // moment on the grid and the honest one here.
+  readonly property bool raceUnderway: raceStart ? nowMs >= raceMs : false
+
+  function playIntro() {
+    if (!animOn || view !== "schedule") return
+    if (trackHero && trackHero.hasTrack) trackHero.playIntro()
+    if (raceDay && startLights) startLights.play()
+  }
+
+  onOpenedChanged: if (opened) Qt.callLater(playIntro)
 
   // ---- Derived values ---------------------------------------------------
   function sessionDate(s) {
@@ -705,6 +731,8 @@ Panel {
           height: scheduleCol.implicitHeight
 
           TrackMap {
+            id: trackHero
+            animateIntro: root.animOn
             anchors.right: parent.right
             anchors.rightMargin: Style.space(6)
             anchors.verticalCenter: parent.verticalCenter
@@ -749,10 +777,21 @@ Panel {
             Column {
               width: parent.width
               spacing: 0
-              PanelSectionHeader {
-                text: "LIGHTS OUT"
-                foreground: Color.popups.text
-                font.letterSpacing: Style.space(2)
+              Row {
+                spacing: Style.space(10)
+                PanelSectionHeader {
+                  text: "LIGHTS OUT"
+                  foreground: Color.popups.text
+                  font.letterSpacing: Style.space(2)
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+                StartLights {
+                  id: startLights
+                  visible: root.animOn && root.raceDay
+                  releaseToBlackout: root.raceUnderway
+                  cell: Style.space(9)
+                  anchors.verticalCenter: parent.verticalCenter
+                }
               }
               Text {
                 width: parent.width

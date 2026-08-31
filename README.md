@@ -62,7 +62,25 @@ omarchy restart shell
 Open the widget's settings from the Omarchy shell to configure: time format
 (12/24-hour), bar countdown target (next race vs next session), default tab,
 team-color chips on/off, a favorite driver (3-letter code) and team (id) to
-highlight, and an optional pre-race desktop notification with lead time.
+highlight, an optional pre-race desktop notification with lead time, and the
+animated intro described below.
+
+### The intro
+
+Opening the Schedule tab flips the circuit outline up out of the horizon into
+plan view — a one-shot Mode 7 tilt, the perspective trick 16-bit racers used for
+their ground plane. It is one-shot rather than a loop because the popup is only
+open for a few seconds, and because the plan view is the orientation that makes
+a circuit recognisable.
+
+On race day — from three hours before lights out — the starting gantry appears
+beside the countdown and runs the five-light sequence. Before the start it holds
+on all five reds, which is the real moment on the grid. Once the race is
+running it finishes the way the real one does, going dark, because lights out
+*is* the start.
+
+Both are off with a single setting (**Animated intro**) for anyone who wants the
+panel to sit still.
 
 ## Interaction
 
@@ -78,6 +96,8 @@ highlight, and an optional pre-race desktop notification with lead time.
 - `Panel.qml` — fetches `current/next.json` via `curl` (Quickshell `Process`),
   parses it, exposes `label`/`tooltip` to the pill, and renders the popup. A
   1-second timer advances the countdown; the schedule refetches every 6 hours.
+- `TrackMap.qml` — the circuit outline, and the Mode 7 matrix that flips it in.
+- `StartLights.qml` — the five-light starting gantry and its sequence.
 
 ## License
 

@@ -25,6 +25,7 @@
       "countdownTarget": "race",
       "defaultTab": "schedule",
       "teamColors": true,
+      "raceAnimations": true,
       "favoriteDriver": "",
       "favoriteTeam": "",
       "notifyRace": false,
@@ -68,6 +69,12 @@
         "key": "teamColors",
         "type": "boolean",
         "label": "Show team colors",
+        "defaultValue": true
+      },
+      {
+        "key": "raceAnimations",
+        "type": "boolean",
+        "label": "Animated intro (circuit flip-in and start lights)",
         "defaultValue": true
       },
       {
