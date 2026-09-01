@@ -40,9 +40,9 @@ omarchy bar move com.leafbox.f1 right
 
 ## Local development
 
+Fork the repo and check out your copy, then from inside it:
+
 ```bash
-git clone https://github.com/Snackwrap/omarchy-f1.git
-cd omarchy-f1
 ./deploy-local.sh                     # symlink into ~/.config/omarchy/plugins + validate
 omarchy plugin enable com.leafbox.f1 right
 omarchy restart shell                 # reload after each edit (rescanPlugins alone
