@@ -126,3 +126,9 @@ Bundled circuit geometry in `tracks.js` is derived from
 Copyright (c) Tomo Bacinger, MIT License. Schedule/standings/results data © the
 [Jolpica-F1](https://github.com/jolpica/jolpica-f1) project (Ergast-compatible
 API); live timing © [OpenF1](https://openf1.org). No API keys required.
+
+This is an unofficial fan project. It is not associated with, endorsed by, or a
+product of Formula 1. F1, FORMULA 1 and the related marks are trademarks of
+Formula One Licensing BV; this plugin uses none of the official logos or marks
+and draws its own lettering for the panel masthead. Neither Formula One,
+Jolpica, OpenF1 nor Tomo Bacinger endorses it.
