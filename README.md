@@ -59,11 +59,29 @@ omarchy restart shell
 
 ## Settings
 
-Open the widget's settings from the Omarchy shell to configure: time format
-(12/24-hour), bar countdown target (next race vs next session), default tab,
-team-color chips on/off, a favorite driver (3-letter code) and team (id) to
-highlight, an optional pre-race desktop notification with lead time, and the
-animated intro described below.
+Omarchy has no settings UI for bar widgets yet — the manifest declares a schema
+for the one that is coming. Until then, set any key from the table below with:
+
+```bash
+omarchy bar set com.leafbox.f1 favoriteDriver VER
+omarchy restart shell
+```
+
+An empty value falls back to the default, so `omarchy bar set com.leafbox.f1
+favoriteDriver ""` clears the highlight.
+
+| Setting | Key | Does |
+|---|---|---|
+| Time format | `timeFormat` | `24h` or `12h` |
+| Bar countdown target | `countdownTarget` | `race` or the next `session` |
+| Default tab | `defaultTab` | `schedule`, `drivers` or `constructors` |
+| Show team colors | `teamColors` | Team-color chips on standings rows |
+| Animated intro | `raceAnimations` | The circuit flip-in and start lights, below |
+| Highlight driver | `favoriteDriver` | 3-letter code, e.g. `VER` |
+| Highlight team | `favoriteTeam` | Constructor id, e.g. `ferrari` |
+| Notify before race | `notifyRace` | Off by default |
+| Notify lead time | `notifyLeadMin` | Minutes before lights out, 0-120 |
+| Popup position | `popupPosition` | `icon` (under the bar icon) or `center` |
 
 ### The intro
 

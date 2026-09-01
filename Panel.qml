@@ -55,7 +55,7 @@ Panel {
 
   readonly property string base: "https://api.jolpi.ca/ergast/f1/"
   readonly property string openf1: "https://api.openf1.org/v1/"
-  readonly property string ua: "omarchy-f1/0.7"
+  readonly property string ua: "omarchy-f1/0.10"
 
   // ---- Settings ---------------------------------------------------------
   readonly property string timeFormat: String(setting("timeFormat", "24h"))
@@ -63,6 +63,15 @@ Panel {
   readonly property string longPattern: timeFormat === "12h" ? "ddd d MMM, h:mm AP" : "ddd d MMM, HH:mm"
   readonly property string favDriver: String(setting("favoriteDriver", "")).toUpperCase().trim()
   readonly property string favTeam: String(setting("favoriteTeam", "")).toLowerCase().trim()
+  // Wikipedia links come from the Ergast payload, so they are remote data. Hand the
+  // string to Qt.openUrlExternally rather than a shell, and only for an https URL, so
+  // a hostile `url` field cannot become anything but a rejected link.
+  function openLink(u) {
+    var s = String(u || "")
+    if (s.indexOf("https://") !== 0) return
+    Qt.openUrlExternally(s)
+  }
+
   function boolSetting(name, dflt) { var v = setting(name, dflt); return v === true || v === "true" || v === 1 }
   readonly property bool teamColorsOn: boolSetting("teamColors", true)
   readonly property bool notifyOn: boolSetting("notifyRace", false)
@@ -1002,7 +1011,7 @@ Panel {
       anchors.fill: parent
       hoverEnabled: !!rr.row.url
       cursorShape: rr.row.url ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onClicked: if (rr.row.url && root.bar) root.bar.run("xdg-open '" + String(rr.row.url).replace(/'/g, "") + "'")
+      onClicked: root.openLink(rr.row.url)
     }
 
     Row {
@@ -1063,7 +1072,7 @@ Panel {
       anchors.fill: parent
       hoverEnabled: !!sr.row.url
       cursorShape: sr.row.url ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onClicked: if (sr.row.url && root.bar) root.bar.run("xdg-open '" + String(sr.row.url).replace(/'/g, "") + "'")
+      onClicked: root.openLink(sr.row.url)
     }
 
     Row {
