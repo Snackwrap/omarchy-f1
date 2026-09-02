@@ -118,13 +118,28 @@ Panel {
   // For the bar pill and its tooltip: those render in Text elements the shell
   // owns, so `textFormat` is not ours to set and the markup has to come out of
   // the string instead of being neutralised at the sink.
+  // A tooltip is deliberately several lines, and safe() strips newlines along
+  // with every other C0 control — so the boundary is applied per line and the
+  // structure is rebuilt, rather than the whole thing being flattened.
+  function safeBareLines(v, perLine, maxLines) {
+    var lines = String(v === null || v === undefined ? "" : v).split("\n")
+    var out = []
+    for (var i = 0; i < lines.length && out.length < (maxLines || 12); i++) {
+      out.push(safeBare(lines[i], perLine || 80))
+    }
+    return out.join("\n")
+  }
+
   function safeBare(v, limit) {
     return safe(v, limit).replace(/[<>&]/g, " ")
   }
 
   function safe(v, limit) {
     var text = String(v === null || v === undefined ? "" : v)
-    text = text.replace(/[\u0000-\u001F\u007F]+/g, " ").replace(/^\s+|\s+$/g, "")
+    text = text.replace(/[\u0000-\u001F\u007F\u0080-\u009F]+/g, " ")
+                   // Bidi and other invisible format controls can reorder or
+                   // hide what is shown without changing what was checked.
+                   .replace(/[\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]/g, "").replace(/^\s+|\s+$/g, "")
     var cap = limit || maxFieldChars
     return text.length > cap ? text.slice(0, cap) + "\u2026" : text
   }
@@ -739,13 +754,19 @@ Panel {
     return raceMs
   }
 
-  readonly property string label: {
+  readonly property string label: safeBare(rawLabel, 32)
+
+  readonly property string rawLabel: {
     if (liveActive) return liveLabelPrefix
     if (!race || !raceStart) return ""
     return " " + fmtShort(pillTargetMs - nowMs)  // nf-fa-flag_checkered
   }
 
-  readonly property string tooltip: {
+  // Both render in Text elements the shell owns, where this plugin cannot set
+  // textFormat, so the boundary goes on the finished string.
+  readonly property string tooltip: safeBareLines(rawTooltip, 80, 6)
+
+  readonly property string rawTooltip: {
     if (liveActive) return "LIVE" + (liveLeader ? " · P1 " + safeBare(liveLeader, 4) : "")
                     + (liveFlag ? " · " + safeBare(friendlyFlag(liveFlag), 24) : "")
     if (!race) return "Formula 1"
