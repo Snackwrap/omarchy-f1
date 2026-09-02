@@ -47,7 +47,7 @@ Panel {
   property int notifiedRound: -1
 
   // Live timing (OpenF1). Only polled while near a scheduled session.
-  property var driversMap: ({})
+  property var driversMap: ({})   // null-prototype, built in ofDriversProc
   property bool driversMapLoaded: false
   property var livePosRows: []
   property double liveLatestMs: 0
@@ -95,7 +95,10 @@ Panel {
   readonly property int maxFieldChars: 72
 
   function fetchArgs(seconds, url) {
-    return ["curl", "-fsS", "-A", ua,
+    // -q must come first: without it curl reads ~/.curlrc, which could add a
+    // proxy, an output file, or --insecure to what is otherwise a fixed
+    // request.
+    return ["curl", "-q", "-fsS", "-A", ua,
             "--proto", "=https",                 // refuse anything but https
             "--max-time", String(seconds),
             "--max-filesize", String(maxResponseBytes),
@@ -152,10 +155,34 @@ Panel {
   property int fetchGen: 0
   property var procGen: [0, 0, 0, 0, 0, 0, 0, 0]
 
-  function stamp(i, proc) {
-    var g = procGen
-    g[i] = fetchGen
-    procGen = g
+  property var pendingCmd: [null, null, null, null, null, null, null, null]
+
+  // Start now if the slot is idle, otherwise queue: a superseded process can
+  // still flush its collector after `running = false`, and if the replacement
+  // had already rewritten the stamps that stale output would validate against
+  // the new request's checks. onExited starts the queued run, by which point
+  // the old collector has already run and been rejected.
+  function launch(i, cmd) {
+    var pc = pendingCmd
+    pc[i] = cmd
+    pendingCmd = pc
+    var proc = guardedProcs[i]
+    if (proc.running) { proc.running = false; return }
+    startPending(i)
+  }
+
+  function startPending(i) {
+    var started = guardStarted; started[i] = 0; guardStarted = started
+    var cmd = pendingCmd[i]
+    if (!cmd) return
+    var pc = pendingCmd; pc[i] = null; pendingCmd = pc
+    var g = procGen; g[i] = fetchGen; procGen = g
+    var proc = guardedProcs[i]
+    proc.command = cmd
+    // Set at launch, not by the watchdog's next tick — otherwise a quick
+    // completion followed by a new run inherits the old run's age and can be
+    // killed early.
+    started = guardStarted; started[i] = Date.now(); guardStarted = started
     proc.running = true
   }
 
@@ -163,14 +190,17 @@ Panel {
 
   function invalidate() {
     fetchGen += 1
+    var pc = pendingCmd
     for (var i = 0; i < guardedProcs.length; i++) {
+      pc[i] = null
       if (guardedProcs[i].running) guardedProcs[i].running = false
     }
+    pendingCmd = pc
     loading = false
   }
 
   function refresh() {
-    if (!fetchProc.running) { root.loading = true; stamp(0, fetchProc) }
+    root.loading = true; launch(0, fetchArgs(10, base + "current/next.json"))
   }
 
   Component.onCompleted: refresh()
@@ -200,7 +230,8 @@ Panel {
   // ---- Networking -------------------------------------------------------
   Process {
     id: fetchProc
-    command: root.fetchArgs(10, root.base + "current/next.json")
+    command: ["true"]            // replaced at launch
+    onExited: { root.loading = false; root.startPending(0) }
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -221,7 +252,8 @@ Panel {
 
   Process {
     id: driversProc
-    command: root.fetchArgs(10, root.base + "current/driverStandings.json")
+    command: ["true"]            // replaced at launch
+    onExited: root.startPending(1)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -229,8 +261,8 @@ Panel {
         try {
           var payload = root.parseBounded(text)
           if (!payload) return
-          var lists = payload.MRData.StandingsTable.StandingsLists
-          var arr = (lists && lists.length) ? lists[0].DriverStandings : []
+          var lists = root.boundedList(payload.MRData.StandingsTable.StandingsLists, 4)
+          var arr = root.boundedList((lists && lists.length) ? lists[0].DriverStandings : [], 60)
           var leader = arr.length ? parseFloat(arr[0].points) : 0
           var out = []
           for (var i = 0; i < arr.length; i++) {
@@ -255,7 +287,8 @@ Panel {
 
   Process {
     id: constructorsProc
-    command: root.fetchArgs(10, root.base + "current/constructorStandings.json")
+    command: ["true"]            // replaced at launch
+    onExited: root.startPending(2)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -263,8 +296,8 @@ Panel {
         try {
           var payload = root.parseBounded(text)
           if (!payload) return
-          var lists = payload.MRData.StandingsTable.StandingsLists
-          var arr = (lists && lists.length) ? lists[0].ConstructorStandings : []
+          var lists = root.boundedList(payload.MRData.StandingsTable.StandingsLists, 4)
+          var arr = root.boundedList((lists && lists.length) ? lists[0].ConstructorStandings : [], 60)
           var leader = arr.length ? parseFloat(arr[0].points) : 0
           var out = []
           for (var i = 0; i < arr.length; i++) {
@@ -287,9 +320,8 @@ Panel {
 
   Process {
     id: gridProc
-    command: root.fetchArgs(10, root.debug
-              ? (root.base + "current/last/qualifying.json")
-              : (root.base + "current/" + (root.race ? root.race.round : "") + "/qualifying.json"))
+    command: ["true"]            // replaced at launch
+    onExited: root.startPending(3)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -297,8 +329,8 @@ Panel {
         try {
           var payload = root.parseBounded(text)
           if (!payload) return
-          var races = payload.MRData.RaceTable.Races
-          var arr = (races && races.length) ? races[0].QualifyingResults : []
+          var races = root.boundedList(payload.MRData.RaceTable.Races, 4)
+          var arr = root.boundedList((races && races.length) ? races[0].QualifyingResults : [], 60)
           var out = []
           for (var i = 0; i < arr.length; i++) {
             var q = arr[i]
@@ -320,7 +352,8 @@ Panel {
 
   Process {
     id: resultsProc
-    command: root.fetchArgs(10, root.base + "current/last/results.json")
+    command: ["true"]            // replaced at launch
+    onExited: root.startPending(4)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -328,10 +361,10 @@ Panel {
         try {
           var payload = root.parseBounded(text)
           if (!payload) return
-          var races = payload.MRData.RaceTable.Races
+          var races = root.boundedList(payload.MRData.RaceTable.Races, 4)
           var r0 = (races && races.length) ? races[0] : null
-          var arr = r0 ? r0.Results : []
-          root.resultsRaceName = r0 ? r0.raceName : ""
+          var arr = root.boundedList(r0 ? r0.Results : [], 60)
+          root.resultsRaceName = r0 ? root.safe(r0.raceName, 48) : ""
           var out = []
           for (var i = 0; i < arr.length; i++) {
             var r = arr[i]
@@ -361,7 +394,8 @@ Panel {
   // session during that window; a freshness check guards against stale data.
   Process {
     id: ofDriversProc
-    command: root.fetchArgs(10, root.openf1 + "drivers?session_key=latest")
+    command: ["true"]            // replaced at launch
+    onExited: root.startPending(5)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -369,11 +403,19 @@ Panel {
         try {
           var arr = root.parseBounded(text)
           if (!arr) return
-          var m = {}
+          arr = root.boundedList(arr, 60)
+          // A null prototype, because the keys come from the API: a row
+          // claiming driver_number "__proto__" would otherwise reach
+          // Object.prototype rather than land in the map.
+          var m = Object.create(null)
           for (var i = 0; i < arr.length; i++) {
             var d = arr[i]
-            m[d.driver_number] = {
-              acr: d.name_acronym || ("#" + d.driver_number),
+            // Only keys shaped like the driver numbers they claim to be.
+            var key = String(d.driver_number === null || d.driver_number === undefined
+                             ? "" : d.driver_number)
+            if (!/^[0-9]{1,3}$/.test(key)) continue
+            m[key] = {
+              acr: root.safe(d.name_acronym || ("#" + key), 8),
               color: d.team_colour ? ("#" + d.team_colour) : "",
               team: d.team_name || ""
             }
@@ -387,7 +429,8 @@ Panel {
 
   Process {
     id: ofPosProc
-    command: root.fetchArgs(12, root.openf1 + "position?session_key=latest")
+    command: ["true"]            // replaced at launch
+    onExited: root.startPending(6)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -395,19 +438,28 @@ Panel {
         try {
           var arr = root.parseBounded(text)
           if (!arr) return
-          var latest = {}
+          arr = root.boundedList(arr, 60)
+          // Same treatment as the driver map: a null prototype and keys held
+          // to the shape a driver number actually has, since both come
+          // straight from the API.
+          var latest = Object.create(null)
           for (var i = 0; i < arr.length; i++) {
             var r = arr[i]
-            var n = r.driver_number
-            if (!latest[n] || r.date > latest[n].date) latest[n] = { pos: r.position, date: r.date }
+            var n = String(r.driver_number === null || r.driver_number === undefined
+                           ? "" : r.driver_number)
+            if (!/^[0-9]{1,3}$/.test(n)) continue
+            var pos = Number(r.position)
+            if (!isFinite(pos) || pos < 1 || pos > 99) continue
+            if (!latest[n] || r.date > latest[n].date) latest[n] = { pos: pos, date: r.date }
           }
           var rows = []
           var maxMs = 0
           for (var num in latest) {
             var t = new Date(latest[num].date).getTime()
             if (t > maxMs) maxMs = t
-            var info = root.driversMap[num] || {}
-            rows.push({ pos: latest[num].pos, code: info.acr || ("#" + num), color: info.color || "", team: info.team || "" })
+            var info = (root.driversMap && root.driversMap[num]) || {}
+            rows.push({ pos: latest[num].pos, code: root.safe(info.acr || ("#" + num), 8),
+                        color: info.color || "", team: root.safe(info.team, 32) })
           }
           rows.sort(function(a, b) { return a.pos - b.pos })
           root.livePosRows = root.boundedList(rows, 30)
@@ -419,7 +471,8 @@ Panel {
 
   Process {
     id: ofFlagProc
-    command: root.fetchArgs(10, root.openf1 + "race_control?session_key=latest")
+    command: ["true"]            // replaced at launch
+    onExited: root.startPending(7)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -427,6 +480,7 @@ Panel {
         try {
           var arr = root.parseBounded(text)
           if (!arr) return
+          arr = root.boundedList(arr, 60)
           var last = ""
           for (var i = 0; i < arr.length; i++)
             if (arr[i].category === "Flag" && arr[i].scope === "Track" && arr[i].flag) last = arr[i].flag
@@ -455,9 +509,9 @@ Panel {
 
   function pollLive() {
     if (!nearSession && !debug) return
-    if (!driversMapLoaded && !ofDriversProc.running) stamp(5, ofDriversProc)
-    if (!ofPosProc.running) stamp(6, ofPosProc)
-    if (!ofFlagProc.running) stamp(7, ofFlagProc)
+    if (!driversMapLoaded && !ofDriversProc.running) launch(5, fetchArgs(10, openf1 + "drivers?session_key=latest"))
+    if (!ofPosProc.running) launch(6, fetchArgs(12, openf1 + "position?session_key=latest"))
+    if (!ofFlagProc.running) launch(7, fetchArgs(10, openf1 + "race_control?session_key=latest"))
   }
 
   onNearSessionChanged: {
@@ -488,10 +542,16 @@ Panel {
     return map[f] || f
   }
 
-  function ensureDrivers() { if (!driversLoaded && !driversProc.running) stamp(1, driversProc) }
-  function ensureConstructors() { if (!constructorsLoaded && !constructorsProc.running) stamp(2, constructorsProc) }
-  function ensureGrid() { if ((race || debug) && !gridLoaded && !gridProc.running) stamp(3, gridProc) }
-  function ensureResults() { if (!resultsLoaded && !resultsProc.running) stamp(4, resultsProc) }
+  function ensureDrivers() { if (!driversLoaded && !driversProc.running) launch(1, fetchArgs(10, base + "current/driverStandings.json")) }
+  function ensureConstructors() { if (!constructorsLoaded && !constructorsProc.running) launch(2, fetchArgs(10, base + "current/constructorStandings.json")) }
+  function ensureGrid() {
+    if (!(race || debug) || gridLoaded || gridProc.running) return
+    // The round is part of this URL and debug swaps the endpoint entirely, so
+    // the request is built here rather than bound.
+    launch(3, fetchArgs(10, debug ? (base + "current/last/qualifying.json")
+                                  : (base + "current/" + (race ? race.round : "") + "/qualifying.json")))
+  }
+  function ensureResults() { if (!resultsLoaded && !resultsProc.running) launch(4, fetchArgs(10, base + "current/last/results.json")) }
 
   onViewChanged: {
     if (view === "drivers") ensureDrivers()
@@ -509,7 +569,10 @@ Panel {
     return (nowMs >= qualiStart.getTime() + 60 * 60 * 1000) && (nowMs < raceMs)
   }
 
+  // Anything that changes what a request would ask for invalidates what is in
+  // flight: `debug` swaps the grid endpoint, and the round is part of its URL.
   onRaceChanged: invalidate()
+  onDebugChanged: { invalidate(); gridLoaded = false; refresh() }
 
   onGridApplicableChanged: {
     if (pinnedView !== "") return
