@@ -112,6 +112,13 @@ Panel {
   // it looks like markup. Every remote value is therefore forced through here:
   // control characters out, length clamped, and the Text elements that show
   // them are pinned to PlainText besides.
+  // For the bar pill and its tooltip: those render in Text elements the shell
+  // owns, so `textFormat` is not ours to set and the markup has to come out of
+  // the string instead of being neutralised at the sink.
+  function safeBare(v, limit) {
+    return safe(v, limit).replace(/[<>&]/g, " ")
+  }
+
   function safe(v, limit) {
     var text = String(v === null || v === undefined ? "" : v)
     text = text.replace(/[\u0000-\u001F\u007F]+/g, " ").replace(/^\s+|\s+$/g, "")
@@ -139,8 +146,31 @@ Panel {
 
   function openFromHotkey() { open() }
 
+  // Every request is stamped with the generation that made it, and a completion
+  // whose stamp no longer matches is discarded rather than assigned to whatever
+  // is selected by the time it lands.
+  property int fetchGen: 0
+  property var procGen: [0, 0, 0, 0, 0, 0, 0, 0]
+
+  function stamp(i, proc) {
+    var g = procGen
+    g[i] = fetchGen
+    procGen = g
+    proc.running = true
+  }
+
+  function fresh(i) { return procGen[i] === fetchGen }
+
+  function invalidate() {
+    fetchGen += 1
+    for (var i = 0; i < guardedProcs.length; i++) {
+      if (guardedProcs[i].running) guardedProcs[i].running = false
+    }
+    loading = false
+  }
+
   function refresh() {
-    if (!fetchProc.running) { root.loading = true; fetchProc.running = true }
+    if (!fetchProc.running) { root.loading = true; stamp(0, fetchProc) }
   }
 
   Component.onCompleted: refresh()
@@ -174,6 +204,7 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.fresh(0)) return      // superseded by a newer request
         root.loading = false
         var raw = String(text || "").trim()
         if (!raw) { root.lastError = "empty response"; return }
@@ -194,6 +225,7 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.fresh(1)) return      // superseded by a newer request
         try {
           var payload = root.parseBounded(text)
           if (!payload) return
@@ -227,6 +259,7 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.fresh(2)) return      // superseded by a newer request
         try {
           var payload = root.parseBounded(text)
           if (!payload) return
@@ -260,6 +293,7 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.fresh(3)) return      // superseded by a newer request
         try {
           var payload = root.parseBounded(text)
           if (!payload) return
@@ -290,6 +324,7 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.fresh(4)) return      // superseded by a newer request
         try {
           var payload = root.parseBounded(text)
           if (!payload) return
@@ -330,6 +365,7 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.fresh(5)) return      // superseded by a newer request
         try {
           var arr = root.parseBounded(text)
           if (!arr) return
@@ -355,6 +391,7 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.fresh(6)) return      // superseded by a newer request
         try {
           var arr = root.parseBounded(text)
           if (!arr) return
@@ -386,6 +423,7 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.fresh(7)) return      // superseded by a newer request
         try {
           var arr = root.parseBounded(text)
           if (!arr) return
@@ -417,9 +455,9 @@ Panel {
 
   function pollLive() {
     if (!nearSession && !debug) return
-    if (!driversMapLoaded && !ofDriversProc.running) ofDriversProc.running = true
-    if (!ofPosProc.running) ofPosProc.running = true
-    if (!ofFlagProc.running) ofFlagProc.running = true
+    if (!driversMapLoaded && !ofDriversProc.running) stamp(5, ofDriversProc)
+    if (!ofPosProc.running) stamp(6, ofPosProc)
+    if (!ofFlagProc.running) stamp(7, ofFlagProc)
   }
 
   onNearSessionChanged: {
@@ -450,10 +488,10 @@ Panel {
     return map[f] || f
   }
 
-  function ensureDrivers() { if (!driversLoaded && !driversProc.running) driversProc.running = true }
-  function ensureConstructors() { if (!constructorsLoaded && !constructorsProc.running) constructorsProc.running = true }
-  function ensureGrid() { if ((race || debug) && !gridLoaded && !gridProc.running) gridProc.running = true }
-  function ensureResults() { if (!resultsLoaded && !resultsProc.running) resultsProc.running = true }
+  function ensureDrivers() { if (!driversLoaded && !driversProc.running) stamp(1, driversProc) }
+  function ensureConstructors() { if (!constructorsLoaded && !constructorsProc.running) stamp(2, constructorsProc) }
+  function ensureGrid() { if ((race || debug) && !gridLoaded && !gridProc.running) stamp(3, gridProc) }
+  function ensureResults() { if (!resultsLoaded && !resultsProc.running) stamp(4, resultsProc) }
 
   onViewChanged: {
     if (view === "drivers") ensureDrivers()
@@ -470,6 +508,8 @@ Panel {
     if (!qualiStart || !raceStart) return false
     return (nowMs >= qualiStart.getTime() + 60 * 60 * 1000) && (nowMs < raceMs)
   }
+
+  onRaceChanged: invalidate()
 
   onGridApplicableChanged: {
     if (pinnedView !== "") return
@@ -643,9 +683,11 @@ Panel {
   }
 
   readonly property string tooltip: {
-    if (liveActive) return "LIVE" + (liveLeader ? " · P1 " + liveLeader : "") + (liveFlag ? " · " + friendlyFlag(liveFlag) : "")
+    if (liveActive) return "LIVE" + (liveLeader ? " · P1 " + safeBare(liveLeader, 4) : "")
+                    + (liveFlag ? " · " + safeBare(friendlyFlag(liveFlag), 24) : "")
     if (!race) return "Formula 1"
-    return (race.raceName || "Next race") + (raceStart ? " — " + Qt.formatDateTime(raceStart, longPattern) : "")
+    return safeBare(race.raceName || "Next race", 48)
+           + (raceStart ? " — " + Qt.formatDateTime(raceStart, longPattern) : "")
   }
 
   function teamColor(teamId) { return Teams.colorFor(teamId, Color.muted) }
