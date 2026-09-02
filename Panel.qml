@@ -66,10 +66,64 @@ Panel {
   // Wikipedia links come from the Ergast payload, so they are remote data. Hand the
   // string to Qt.openUrlExternally rather than a shell, and only for an https URL, so
   // a hostile `url` field cannot become anything but a rejected link.
+  // These links come out of the Ergast payload, so the destination is remote
+  // data. A scheme check alone still lets the API send a reader anywhere on the
+  // web, so the host is checked against the ones this data is documented to
+  // reference and everything else is dropped.
+  readonly property var linkHosts: ["en.wikipedia.org", "www.wikipedia.org", "wikipedia.org"]
+
   function openLink(u) {
-    var s = String(u || "")
-    if (s.indexOf("https://") !== 0) return
-    Qt.openUrlExternally(s)
+    var raw = String(u || "")
+    if (raw.indexOf("https://") !== 0) return
+    var rest = raw.slice(8)
+    var slash = rest.indexOf("/")
+    var host = (slash < 0 ? rest : rest.slice(0, slash)).toLowerCase()
+    // Strip any userinfo and port so "en.wikipedia.org@evil.test" cannot pass.
+    if (host.indexOf("@") >= 0) return
+    if (host.indexOf(":") >= 0) host = host.slice(0, host.indexOf(":"))
+    if (linkHosts.indexOf(host) < 0) return
+    if (raw.length > 400) return
+    Qt.openUrlExternally(raw)
+  }
+
+  // ---- Remote data hygiene ----------------------------------------------
+  // Everything fetched below lands in a Text element or a notification. Two
+  // ceilings rather than one: curl refuses to download more than
+  // maxResponseBytes, and parseBounded rejects anything that got past it —
+  // a chunked response has no Content-Length for curl to check.
+  readonly property int maxResponseBytes: 524288
+  readonly property int maxFieldChars: 72
+
+  function fetchArgs(seconds, url) {
+    return ["curl", "-fsS", "-A", ua,
+            "--proto", "=https",                 // refuse anything but https
+            "--max-time", String(seconds),
+            "--max-filesize", String(maxResponseBytes),
+            url]
+  }
+
+  function parseBounded(raw) {
+    var text = String(raw || "")
+    if (text.length === 0 || text.length > maxResponseBytes) return null
+    return JSON.parse(text)
+  }
+
+  // Qt's Text defaults to AutoText, which renders a string as *rich* text when
+  // it looks like markup. Every remote value is therefore forced through here:
+  // control characters out, length clamped, and the Text elements that show
+  // them are pinned to PlainText besides.
+  function safe(v, limit) {
+    var text = String(v === null || v === undefined ? "" : v)
+    text = text.replace(/[\u0000-\u001F\u007F]+/g, " ").replace(/^\s+|\s+$/g, "")
+    var cap = limit || maxFieldChars
+    return text.length > cap ? text.slice(0, cap) + "\u2026" : text
+  }
+
+  // An array from a remote payload is capped before anything walks it, so a
+  // hostile or broken response cannot turn into tens of thousands of delegates.
+  function boundedList(v, cap) {
+    if (!v || !v.length) return []
+    return v.length > cap ? v.slice(0, cap) : v
   }
 
   function boolSetting(name, dflt) { var v = setting(name, dflt); return v === true || v === "true" || v === 1 }
@@ -116,7 +170,7 @@ Panel {
   // ---- Networking -------------------------------------------------------
   Process {
     id: fetchProc
-    command: ["curl", "-fsS", "-A", root.ua, "--max-time", "10", root.base + "current/next.json"]
+    command: root.fetchArgs(10, root.base + "current/next.json")
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -124,7 +178,8 @@ Panel {
         var raw = String(text || "").trim()
         if (!raw) { root.lastError = "empty response"; return }
         try {
-          var parsed = JSON.parse(raw)
+          var parsed = root.parseBounded(raw)
+          if (!parsed) { root.loading = false; return }
           var races = parsed && parsed.MRData && parsed.MRData.RaceTable && parsed.MRData.RaceTable.Races
           if (races && races.length > 0) { root.race = races[0]; root.lastError = "" }
           else { root.race = null; root.lastError = "no upcoming race" }
@@ -135,12 +190,14 @@ Panel {
 
   Process {
     id: driversProc
-    command: ["curl", "-fsS", "-A", root.ua, "--max-time", "10", root.base + "current/driverStandings.json"]
+    command: root.fetchArgs(10, root.base + "current/driverStandings.json")
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         try {
-          var lists = JSON.parse(String(text || "")).MRData.StandingsTable.StandingsLists
+          var payload = root.parseBounded(text)
+          if (!payload) return
+          var lists = payload.MRData.StandingsTable.StandingsLists
           var arr = (lists && lists.length) ? lists[0].DriverStandings : []
           var leader = arr.length ? parseFloat(arr[0].points) : 0
           var out = []
@@ -157,7 +214,7 @@ Panel {
               url: (d.Driver && d.Driver.url) ? d.Driver.url : ""
             })
           }
-          root.driverRows = out
+          root.driverRows = root.boundedList(out, 30)
           root.driversLoaded = true
         } catch (e) { root.driversLoaded = true }
       }
@@ -166,12 +223,14 @@ Panel {
 
   Process {
     id: constructorsProc
-    command: ["curl", "-fsS", "-A", root.ua, "--max-time", "10", root.base + "current/constructorStandings.json"]
+    command: root.fetchArgs(10, root.base + "current/constructorStandings.json")
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         try {
-          var lists = JSON.parse(String(text || "")).MRData.StandingsTable.StandingsLists
+          var payload = root.parseBounded(text)
+          if (!payload) return
+          var lists = payload.MRData.StandingsTable.StandingsLists
           var arr = (lists && lists.length) ? lists[0].ConstructorStandings : []
           var leader = arr.length ? parseFloat(arr[0].points) : 0
           var out = []
@@ -186,7 +245,7 @@ Panel {
               url: (c.Constructor && c.Constructor.url) ? c.Constructor.url : ""
             })
           }
-          root.constructorRows = out
+          root.constructorRows = root.boundedList(out, 15)
           root.constructorsLoaded = true
         } catch (e) { root.constructorsLoaded = true }
       }
@@ -195,14 +254,16 @@ Panel {
 
   Process {
     id: gridProc
-    command: ["curl", "-fsS", "-A", root.ua, "--max-time", "10",
-              root.debug ? (root.base + "current/last/qualifying.json")
-                         : (root.base + "current/" + (root.race ? root.race.round : "") + "/qualifying.json")]
+    command: root.fetchArgs(10, root.debug
+              ? (root.base + "current/last/qualifying.json")
+              : (root.base + "current/" + (root.race ? root.race.round : "") + "/qualifying.json"))
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         try {
-          var races = JSON.parse(String(text || "")).MRData.RaceTable.Races
+          var payload = root.parseBounded(text)
+          if (!payload) return
+          var races = payload.MRData.RaceTable.Races
           var arr = (races && races.length) ? races[0].QualifyingResults : []
           var out = []
           for (var i = 0; i < arr.length; i++) {
@@ -216,7 +277,7 @@ Panel {
               url: (q.Driver && q.Driver.url) ? q.Driver.url : ""
             })
           }
-          root.gridRows = out
+          root.gridRows = root.boundedList(out, 30)
           root.gridLoaded = true
         } catch (e) { root.gridLoaded = true }
       }
@@ -225,12 +286,14 @@ Panel {
 
   Process {
     id: resultsProc
-    command: ["curl", "-fsS", "-A", root.ua, "--max-time", "10", root.base + "current/last/results.json"]
+    command: root.fetchArgs(10, root.base + "current/last/results.json")
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         try {
-          var races = JSON.parse(String(text || "")).MRData.RaceTable.Races
+          var payload = root.parseBounded(text)
+          if (!payload) return
+          var races = payload.MRData.RaceTable.Races
           var r0 = (races && races.length) ? races[0] : null
           var arr = r0 ? r0.Results : []
           root.resultsRaceName = r0 ? r0.raceName : ""
@@ -248,7 +311,7 @@ Panel {
               url: (r.Driver && r.Driver.url) ? r.Driver.url : ""
             })
           }
-          root.resultsRows = out
+          root.resultsRows = root.boundedList(out, 30)
           root.resultsLoaded = true
         } catch (e) { root.resultsLoaded = true }
       }
@@ -263,12 +326,13 @@ Panel {
   // session during that window; a freshness check guards against stale data.
   Process {
     id: ofDriversProc
-    command: ["curl", "-fsS", "--max-time", "10", root.openf1 + "drivers?session_key=latest"]
+    command: root.fetchArgs(10, root.openf1 + "drivers?session_key=latest")
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         try {
-          var arr = JSON.parse(String(text || ""))
+          var arr = root.parseBounded(text)
+          if (!arr) return
           var m = {}
           for (var i = 0; i < arr.length; i++) {
             var d = arr[i]
@@ -287,12 +351,13 @@ Panel {
 
   Process {
     id: ofPosProc
-    command: ["curl", "-fsS", "--max-time", "12", root.openf1 + "position?session_key=latest"]
+    command: root.fetchArgs(12, root.openf1 + "position?session_key=latest")
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         try {
-          var arr = JSON.parse(String(text || ""))
+          var arr = root.parseBounded(text)
+          if (!arr) return
           var latest = {}
           for (var i = 0; i < arr.length; i++) {
             var r = arr[i]
@@ -308,7 +373,7 @@ Panel {
             rows.push({ pos: latest[num].pos, code: info.acr || ("#" + num), color: info.color || "", team: info.team || "" })
           }
           rows.sort(function(a, b) { return a.pos - b.pos })
-          root.livePosRows = rows
+          root.livePosRows = root.boundedList(rows, 30)
           root.liveLatestMs = maxMs
         } catch (e) { /* keep last-good */ }
       }
@@ -317,12 +382,13 @@ Panel {
 
   Process {
     id: ofFlagProc
-    command: ["curl", "-fsS", "--max-time", "10", root.openf1 + "race_control?session_key=latest"]
+    command: root.fetchArgs(10, root.openf1 + "race_control?session_key=latest")
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
         try {
-          var arr = JSON.parse(String(text || ""))
+          var arr = root.parseBounded(text)
+          if (!arr) return
           var last = ""
           for (var i = 0; i < arr.length; i++)
             if (arr[i].category === "Flag" && arr[i].scope === "Track" && arr[i].flag) last = arr[i].flag
@@ -427,6 +493,37 @@ Panel {
     return t
   }
 
+  // curl's --max-time is curl's to honour, and it is the only clock the
+  // subprocess has. This is an independent one: any fetch still alive past its
+  // own limit plus a grace period is terminated from here, which also unsticks
+  // `loading` if a process wedges without ever exiting.
+  readonly property var guardedProcs: [fetchProc, driversProc, constructorsProc,
+                                       gridProc, resultsProc,
+                                       ofDriversProc, ofPosProc, ofFlagProc]
+  readonly property var guardLimits: [10, 10, 10, 10, 10, 10, 12, 10]
+  property var guardStarted: [0, 0, 0, 0, 0, 0, 0, 0]
+
+  Timer {
+    interval: 2000
+    running: true
+    repeat: true
+    onTriggered: {
+      var now = Date.now()
+      var started = root.guardStarted
+      for (var i = 0; i < root.guardedProcs.length; i++) {
+        var proc = root.guardedProcs[i]
+        if (!proc.running) { started[i] = 0; continue }
+        if (!started[i]) { started[i] = now; continue }
+        if (now - started[i] > (root.guardLimits[i] + 5) * 1000) {
+          proc.running = false      // Quickshell terminates the child
+          started[i] = 0
+          root.loading = false
+        }
+      }
+      root.guardStarted = started
+    }
+  }
+
   // Refetch the schedule every 6 hours.
   Timer { interval: 6 * 60 * 60 * 1000; running: true; repeat: true; onTriggered: root.refresh() }
   // One-second countdown tick + notification check.
@@ -443,7 +540,7 @@ Panel {
     if (nowMs >= raceMs - lead && nowMs < raceMs + 5 * 60000) {
       notifiedRound = r
       notifyProc.command = ["omarchy-notification-send", "-g", "\uf11e", "-u", "normal",
-        (race.raceName || "Formula 1"), "Lights out " + fmtLong(raceMs - nowMs)]
+        safe(race.raceName || "Formula 1", 60), "Lights out " + fmtLong(raceMs - nowMs)]
       notifyProc.running = true
     }
   }
@@ -590,6 +687,7 @@ Panel {
             spacing: Style.space(7)
             anchors.left: parent.left
             Text {
+              textFormat: Text.PlainText
               text: ""
               color: Color.accent
               font.family: Style.font.family
@@ -597,6 +695,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
             }
             Text {
+              textFormat: Text.PlainText
               text: "FORMULA 1"
               color: Color.muted
               font.family: Style.font.family
@@ -607,6 +706,7 @@ Panel {
             }
           }
           Text {
+            textFormat: Text.PlainText
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             text: root.race ? ("Round " + root.race.round + " · " + root.race.season) : ""
@@ -620,8 +720,9 @@ Panel {
 
         // Race name
         Text {
+          textFormat: Text.PlainText
           width: parent.width
-          text: root.race ? root.race.raceName : (root.loading ? "Loading…" : "No upcoming race")
+          text: root.race ? root.safe(root.race.raceName, 48) : (root.loading ? "Loading…" : "No upcoming race")
           color: Color.popups.text
           font.family: Style.font.family
           font.pixelSize: Style.space(20)
@@ -664,6 +765,7 @@ Panel {
               font.letterSpacing: Style.space(2)
             }
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: "No session running right now."
               color: Color.popups.text
@@ -671,6 +773,7 @@ Panel {
               font.pixelSize: Style.space(13)
             }
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: "Live positions and track flags appear here automatically during practice, qualifying and the race."
               color: Color.muted
@@ -679,10 +782,11 @@ Panel {
               font.pixelSize: Style.space(12)
             }
             Text {
+              textFormat: Text.PlainText
               visible: !!root.nextSession
               width: parent.width
               topPadding: Style.space(4)
-              text: root.nextSession ? ("Next: " + root.nextSession.name + " · " + Qt.formatDateTime(root.nextSession.date, root.dtPattern)) : ""
+              text: root.nextSession ? ("Next: " + root.safe(root.nextSession.name, 24) + " · " + Qt.formatDateTime(root.nextSession.date, root.dtPattern)) : ""
               color: Color.accent
               font.family: Style.font.family
               font.pixelSize: Style.space(12)
@@ -696,6 +800,7 @@ Panel {
             spacing: Style.space(8)
             bottomPadding: Style.space(2)
             Text {
+              textFormat: Text.PlainText
               text: "● LIVE"
               color: Color.accent
               font.family: Style.font.family
@@ -703,8 +808,9 @@ Panel {
               font.bold: true
             }
             Text {
+              textFormat: Text.PlainText
               visible: root.liveFlag !== ""
-              text: root.friendlyFlag(root.liveFlag)
+              text: root.safe(root.friendlyFlag(root.liveFlag), 24)
               color: Color.muted
               font.family: Style.font.family
               font.pixelSize: Style.space(12)
@@ -722,19 +828,22 @@ Panel {
                 color: modelData.color !== "" ? modelData.color : Color.muted
               }
               Text {
+                textFormat: Text.PlainText
                 width: Style.space(22); text: modelData.pos
                 color: (modelData.pos <= 3) ? Color.popups.text : Color.muted
                 horizontalAlignment: Text.AlignRight
                 font.family: Style.font.family; font.pixelSize: Style.space(13)
               }
               Text {
-                width: Style.space(44); text: modelData.code
+                textFormat: Text.PlainText
+                width: Style.space(44); text: root.safe(modelData.code, 4)
                 color: (root.favDriver !== "" && modelData.code === root.favDriver) ? Color.accent : Color.popups.text
                 font.family: Style.font.family; font.pixelSize: Style.space(13); font.bold: true
               }
               Text {
+                textFormat: Text.PlainText
                 width: content.width - Style.space(3 + 22 + 44 + 24)
-                text: modelData.team; color: Color.muted; elide: Text.ElideRight
+                text: root.safe(modelData.team, 32); color: Color.muted; elide: Text.ElideRight
                 font.family: Style.font.family; font.pixelSize: Style.space(13)
               }
             }
@@ -772,14 +881,16 @@ Panel {
               width: parent.width
               spacing: Style.space(2)
               Text {
+                textFormat: Text.PlainText
                 width: parent.width
-                text: (root.race && root.race.Circuit) ? root.race.Circuit.circuitName : ""
+                text: (root.race && root.race.Circuit) ? root.safe(root.race.Circuit.circuitName, 48) : ""
                 color: Color.popups.text
                 font.family: Style.font.family
                 font.pixelSize: Style.space(14)
                 elide: Text.ElideRight
               }
               Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: {
                   if (!root.race || !root.race.Circuit || !root.race.Circuit.Location) return ""
@@ -813,6 +924,7 @@ Panel {
                 }
               }
               Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: root.raceStart ? root.fmtLong(root.raceMs - root.nowMs) : ""
                 color: Color.accent
@@ -840,8 +952,9 @@ Panel {
                 property bool past: modelData.date.getTime() <= root.nowMs
                 property bool isNext: root.nextSession && modelData.date.getTime() === root.nextSession.date.getTime()
                 Text {
+                  textFormat: Text.PlainText
                   width: Style.space(104)
-                  text: modelData.name
+                  text: root.safe(modelData.name, 24)
                   color: isNext ? Color.accent : (past ? Color.muted : Color.popups.text)
                   font.family: Style.font.family
                   font.pixelSize: Style.space(13)
@@ -849,6 +962,7 @@ Panel {
                   elide: Text.ElideRight
                 }
                 Text {
+                  textFormat: Text.PlainText
                   width: Style.space(120)
                   text: Qt.formatDateTime(modelData.date, root.dtPattern)
                   color: isNext ? Color.popups.text : Color.muted
@@ -867,6 +981,7 @@ Panel {
           width: parent.width
           spacing: Style.space(4)
           Text {
+            textFormat: Text.PlainText
             visible: root.gridRows.length === 0
             text: root.gridLoaded ? "No grid available" : "Loading…"
             color: Color.muted
@@ -881,6 +996,7 @@ Panel {
             font.letterSpacing: Style.space(2)
           }
           Text {
+            textFormat: Text.PlainText
             visible: root.gridRows.length > 0
             width: parent.width
             bottomPadding: Style.space(2)
@@ -906,6 +1022,7 @@ Panel {
           width: parent.width
           spacing: Style.space(4)
           Text {
+            textFormat: Text.PlainText
             visible: root.resultsRows.length === 0
             text: root.resultsLoaded ? "No results yet" : "Loading…"
             color: Color.muted
@@ -937,6 +1054,7 @@ Panel {
           width: parent.width
           spacing: Style.space(4)
           Text {
+            textFormat: Text.PlainText
             visible: root.driverRows.length === 0
             text: root.driversLoaded ? "No standings available" : "Loading…"
             color: Color.muted
@@ -966,6 +1084,7 @@ Panel {
           width: parent.width
           spacing: Style.space(4)
           Text {
+            textFormat: Text.PlainText
             visible: root.constructorRows.length === 0
             text: root.constructorsLoaded ? "No standings available" : "Loading…"
             color: Color.muted
@@ -991,6 +1110,7 @@ Panel {
 
         // Error footer
         Text {
+          textFormat: Text.PlainText
           visible: root.lastError !== "" && !root.race
           width: parent.width
           text: "Couldn't load (" + root.lastError + ")"
@@ -1036,29 +1156,34 @@ Panel {
       color: root.teamColor(rr.row.teamId)
     }
     Text {
+      textFormat: Text.PlainText
       width: Style.space(22); text: rr.row.pos
       color: (parseInt(rr.row.pos, 10) <= 3) ? Color.popups.text : Color.muted
       horizontalAlignment: Text.AlignRight
       font.family: Style.font.family; font.pixelSize: Style.space(13)
     }
     Text {
-      width: Style.space(40); text: rr.row.code
+      textFormat: Text.PlainText
+      width: Style.space(40); text: root.safe(rr.row.code, 4)
       color: root.isFavRow(rr.row) ? Color.accent : Color.popups.text
       font.family: Style.font.family; font.pixelSize: Style.space(13); font.bold: true
     }
     Text {
+      textFormat: Text.PlainText
       width: Math.max(Style.space(40), rr.rowWidth - Style.space(3 + 22 + 40) - rr.detailWidth - (rr.points !== "" ? Style.space(32) : 0) - Style.space(40))
-      text: rr.row.team; color: Color.muted; elide: Text.ElideRight
+      text: root.safe(rr.row.team, 32); color: Color.muted; elide: Text.ElideRight
       font.family: Style.font.family; font.pixelSize: Style.space(13)
     }
     Text {
+      textFormat: Text.PlainText
       width: rr.detailWidth; text: rr.row.detail
       color: Color.popups.text; horizontalAlignment: Text.AlignRight
       font.family: Style.font.family; font.pixelSize: Style.space(13); elide: Text.ElideLeft
     }
     Text {
+      textFormat: Text.PlainText
       visible: rr.points !== ""
-      width: Style.space(32); text: rr.points
+      width: Style.space(32); text: root.safe(rr.points, 6)
       color: Color.muted; horizontalAlignment: Text.AlignRight
       font.family: Style.font.family; font.pixelSize: Style.space(13)
     }
@@ -1097,28 +1222,33 @@ Panel {
       color: root.teamColor(sr.row.teamId)
     }
     Text {
+      textFormat: Text.PlainText
       width: Style.space(22); text: sr.row.pos
       color: (parseInt(sr.row.pos, 10) <= 3) ? Color.popups.text : Color.muted
       horizontalAlignment: Text.AlignRight
       font.family: Style.font.family; font.pixelSize: Style.space(13)
     }
     Text {
+      textFormat: Text.PlainText
       width: Style.space(48); text: sr.primary
       color: root.isFavRow(sr.row) ? Color.accent : Color.popups.text
       font.family: Style.font.family; font.pixelSize: Style.space(13); font.bold: true
     }
     Text {
+      textFormat: Text.PlainText
       width: Math.max(Style.space(20), sr.rowWidth - Style.space(3 + 22 + 48) - Style.space(44) - Style.space(52) - Style.space(48))
       text: sr.secondary; color: Color.muted; elide: Text.ElideRight
       font.family: Style.font.family; font.pixelSize: Style.space(13)
     }
     Text {
+      textFormat: Text.PlainText
       width: Style.space(44)
       text: sr.row.gap > 0 ? ("-" + sr.row.gap) : ""
       color: Color.muted; horizontalAlignment: Text.AlignRight
       font.family: Style.font.family; font.pixelSize: Style.space(12)
     }
     Text {
+      textFormat: Text.PlainText
       width: Style.space(52); text: sr.row.pts
       color: Color.popups.text; horizontalAlignment: Text.AlignRight
       font.family: Style.font.family; font.pixelSize: Style.space(13); font.bold: true
