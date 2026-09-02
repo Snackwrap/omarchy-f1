@@ -2,26 +2,41 @@
 
 ![omarchy-f1](preview.png)
 
-A checkered-flag pill for the [Omarchy](https://omarchy.org) (Quattro) bar that
-counts down to the next Formula 1 session. Click it for a popup with these tabs:
+A checkered-flag pill for the [Omarchy](https://omarchy.org) (Quattro) bar. It
+counts down to the next Formula 1 session — and behind it is the rest of the
+weekend: the live timing tower while a session is running, the starting grid the
+moment qualifying ends, the last race's results, both championships, and the
+circuit itself drawn as vector line-art in your theme's colors.
+
+No API key, no account, nothing to set up before it works.
+
+## The six tabs
 
 - **Schedule** — the circuit outline drawn as a theme-colored line-art hero,
   the countdown, and the full weekend session schedule (practice, sprint,
   qualifying, race) in your **local time**.
-- **Live** — during a race weekend session, live running order (leader, positions, team colors) and track-flag status via the OpenF1 API; the pill shows a LIVE indicator and the tab auto-opens. Only polled while a session is on.
-- **Grid** — appears once qualifying is done (and before the race starts): the
-  provisional starting grid, and it becomes the default tab during that window.
-- **Last** — the most recent race result (finishing order, gaps/status, points).
+- **Grid** — appears once qualifying is done and before the race starts: the
+  provisional starting order with every lap time, and it becomes the default
+  tab during that window.
+- **Live** — during a session, the running order (leader, positions, team
+  colors) and track-flag status from the OpenF1 API. The pill picks up a LIVE
+  indicator and the tab auto-opens. Polled only while a session is actually on.
+- **Last** — the most recent race result: finishing order, gaps and status,
+  points.
 - **Drivers** / **Teams** — driver and constructor championship standings, with
   team-color chips, podium emphasis, and points-behind-leader gaps.
 
-Team-color chips, a favorite driver/team highlight, 12/24-hour time, the bar
-countdown target (next race vs next session), the default tab, and an optional
-race-start desktop notification are all configurable in the widget's settings.
+Any row in the grid, results and standings tabs opens that driver, team or race
+on Wikipedia.
+
+12/24-hour time, what the bar counts down to, which tab opens first, a favorite
+driver and team to highlight, and an optional pre-race notification are all
+configurable — see [Settings](#settings) below.
 
 Data comes from the free [Jolpica-F1 API](https://github.com/jolpica/jolpica-f1)
-(an Ergast-compatible mirror). No API key required. Circuit outlines are bundled
-from [`bacinger/f1-circuits`](https://github.com/bacinger/f1-circuits) (MIT),
+(an Ergast-compatible mirror) and [OpenF1](https://openf1.org) for live timing.
+Neither needs a key. Circuit outlines are bundled from
+[`bacinger/f1-circuits`](https://github.com/bacinger/f1-circuits) (MIT),
 preprocessed into a `tracks.js` module by `tools/build-tracks.py` and drawn as
 vector paths via QtQuick.Shapes — so they recolor to match your Omarchy theme.
 
@@ -48,6 +63,12 @@ omarchy plugin enable com.leafbox.f1 right
 omarchy restart shell                 # reload after each edit (rescanPlugins alone
                                       # won't reload changed QML — the shell caches it)
 ```
+
+The Grid and Live tabs only have anything to show on a race weekend, which makes
+them awkward to work on. `omarchy bar set com.leafbox.f1 debugForceTabs true`
+renders both from the last race's data, and with it on `defaultTab` may name any
+tab (`schedule`, `grid`, `live`, `results`, `drivers`, `constructors`) and stays
+pinned there — which is how `tools/capture-preview.sh` shoots every tab.
 
 ## Uninstall
 
@@ -116,6 +137,10 @@ panel to sit still.
   1-second timer advances the countdown; the schedule refetches every 6 hours.
 - `TrackMap.qml` — the circuit outline, and the Mode 7 matrix that flips it in.
 - `StartLights.qml` — the five-light starting gantry and its sequence.
+- `tools/capture-preview.sh` + `tools/build-preview.sh` — regenerate the listing
+  card. The popup closes the moment you click a terminal, so the capture is
+  driven over IPC and cropped by diffing the screen with the popup open against
+  the same screen with it closed.
 
 ## License
 

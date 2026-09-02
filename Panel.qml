@@ -55,7 +55,7 @@ Panel {
 
   readonly property string base: "https://api.jolpi.ca/ergast/f1/"
   readonly property string openf1: "https://api.openf1.org/v1/"
-  readonly property string ua: "omarchy-f1/0.10"
+  readonly property string ua: "omarchy-f1/0.11"
 
   // ---- Settings ---------------------------------------------------------
   readonly property string timeFormat: String(setting("timeFormat", "24h"))
@@ -90,6 +90,14 @@ Panel {
   }
 
   Component.onCompleted: refresh()
+
+  // With debugForceTabs on, defaultTab may name *any* tab and the choice is
+  // pinned against the auto-switches below, so tools/capture-preview.sh can
+  // shoot every tab without waiting for a live race weekend. This is derived
+  // rather than latched in onSettingsChanged because `settings` is injected
+  // before its values are populated — a latch reads the default and sticks.
+  readonly property string pinnedView: debug ? String(setting("defaultTab", "schedule")) : ""
+  onPinnedViewChanged: if (pinnedView !== "") view = pinnedView
 
   onSettingsChanged: {
     if (!viewInitialized && settings) {
@@ -354,6 +362,7 @@ Panel {
   }
 
   onLiveActiveChanged: {
+    if (pinnedView !== "") return
     if (liveActive) { if (view === "schedule" || view === "grid") view = "live" }
     else if (view === "live") view = "schedule"
   }
@@ -397,6 +406,7 @@ Panel {
   }
 
   onGridApplicableChanged: {
+    if (pinnedView !== "") return
     if (gridApplicable) {
       ensureGrid()
       if (view === "schedule") view = "grid"
