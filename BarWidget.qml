@@ -67,7 +67,15 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: panelLoader.item ? panelLoader.item.label : ""
-    slotSize: Style.bar.statusSlot
+    // The pill carries a countdown, not a single glyph, so the icon slot's
+    // fixed width is a lie the bar believes: the text paints past it and the
+    // next widget is laid out over the overflow. Claim the width the string
+    // actually paints, padded the way the shell pads an icon inside its slot,
+    // so the pill keeps the bar's rhythm instead of crowding its neighbours.
+    // The floor keeps the bare flag glyph — the fallback, and the live-session
+    // label — exactly the size of every other status icon.
+    readonly property real slotPad: Math.max(0, (Style.bar.statusSlot - Style.bar.iconCanvas) / 2)
+    slotSize: Math.max(Style.bar.statusSlot, button.glyphPaintedWidth + button.slotPad * 2)
     tooltipText: panelLoader.item ? panelLoader.item.tooltip : "Formula 1"
     // During a live session tint the flag with the theme's attention color
     // instead of widening the pill with LIVE text.
