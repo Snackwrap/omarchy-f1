@@ -62,20 +62,27 @@ BarWidget {
     }
   }
 
+  // BarIconButton is a *fixed-width* slot sized for a single glyph, and the
+  // glyph inside it is drawn centred with no clipping — so a pill carrying text
+  // as well ("\uf11e 4d 21h") silently overhangs its neighbours on both sides.
+  // Measure the actual string and widen the slot to match.
+  TextMetrics {
+    id: pillMetrics
+    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+    font.pixelSize: Style.bar.iconFont
+    text: button.text
+  }
+
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
     text: panelLoader.item ? panelLoader.item.label : ""
-    // The pill carries a countdown, not a single glyph, so the icon slot's
-    // fixed width is a lie the bar believes: the text paints past it and the
-    // next widget is laid out over the overflow. Claim the width the string
-    // actually paints, padded the way the shell pads an icon inside its slot,
-    // so the pill keeps the bar's rhythm instead of crowding its neighbours.
-    // The floor keeps the bare flag glyph — the fallback, and the live-session
-    // label — exactly the size of every other status icon.
-    readonly property real slotPad: Math.max(0, (Style.bar.statusSlot - Style.bar.iconCanvas) / 2)
-    slotSize: Math.max(Style.bar.statusSlot, button.glyphPaintedWidth + button.slotPad * 2)
+    slotSize: Math.max(Style.bar.statusSlot,
+                       Math.ceil(pillMetrics.width) + Style.space(9))
+    // The glyph canvas has to grow with the slot too, or the text is centred
+    // inside a 16px box in the middle of a much wider button.
+    opticalSize: slotSize
     tooltipText: panelLoader.item ? panelLoader.item.tooltip : "Formula 1"
     // During a live session tint the flag with the theme's attention color
     // instead of widening the pill with LIVE text.
